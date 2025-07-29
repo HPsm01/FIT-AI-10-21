@@ -1,28 +1,60 @@
 {
   "expo": {
-    "name": "FE",
-    "slug": "FE",
+    "name": "fe",
+    "slug": "fe",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+      "supportsTablet": true,
+      "bundleIdentifier": "com.psm3464.FE",
+      "jsEngine": "hermes",
+      "infoPlist": {
+        "NSCameraUsageDescription": "이 앱은 입실/퇴실 확인을 위해 카메라 접근 권한이 필요합니다.",
+        "NSPhotoLibraryUsageDescription": "이 앱은 이미지 저장을 위해 갤러리 접근 권한이 필요합니다.",
+        "NSPhotoLibraryAddUsageDescription": "이 앱은 촬영한 사진을 저장하기 위해 갤러리 접근 권한이 필요합니다."
       }
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    }
+    "android": {
+      "jsEngine": "hermes",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.MEDIA_LIBRARY",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.psm3464.FE"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "이 앱은 입실/퇴실 확인을 위해 카메라 접근 권한이 필요합니다."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "이 앱은 이미지 저장을 위해 갤러리 접근 권한이 필요합니다.",
+          "savePhotosPermission": "이 앱은 촬영한 사진을 저장하기 위해 갤러리 접근 권한이 필요합니다."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "이 앱은 이미지 선택을 위해 갤러리 접근 권한이 필요합니다."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "0ef387e5-1110-48dc-b9ba-c51938a99165"
+      }
+    },
+    "scheme": "feapp"
   }
 }
