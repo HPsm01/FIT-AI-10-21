@@ -70,125 +70,138 @@ export default function MyExerciseScreen({ navigation }) {
 
   // S3에서 영상 다운로드 및 갤러리에 저장
   const downloadAndSaveToGallery = async (s3Key) => {
-    try {
-      setDownloadingVideo(true);
-      
-      // 권한 확인
-      const hasPermission = await requestStoragePermission();
-      if (!hasPermission) {
-        Alert.alert(
-          '권한 필요', 
-          '영상을 저장하기 위해 저장소 권한이 필요합니다.\n\n설정에서 권한을 허용해주세요.',
-          [
-            { text: '취소', style: 'cancel' },
-            { 
-              text: '설정으로 이동', 
-              onPress: () => {
-                // 설정 앱으로 이동 (Android)
-                if (Platform.OS === 'android') {
-                  Linking.openSettings();
-                }
-              }
-            }
-          ]
-        );
-        return;
-      }
-
-      const res = await fetch(`http://13.209.67.129:8000/workouts/s3/presign?key=fitvideoresult/${s3Key}`);
-if (!res.ok) throw new Error("Presigned URL 발급 실패");
-const { url: s3Url } = await res.json();
-      
+  try {
+    setDownloadingVideo(true);
+    
+    const hasPermission = await requestStoragePermission();
+    if (!hasPermission) {
       Alert.alert(
-        '영상 다운로드',
-        '피드백 영상을 어떻게 받으시겠습니까?',
+        '권한 필요', 
+        '영상을 저장하기 위해 저장소 권한이 필요합니다.\n\n설정에서 권한을 허용해주세요.',
         [
           { text: '취소', style: 'cancel' },
           { 
-            text: '브라우저에서 열기', 
-            onPress: async () => {
-              try {
-                // 브라우저에서 영상 URL 열기 (사용자가 직접 다운로드)
-                const supported = await Linking.canOpenURL(s3Url);
-                if (supported) {
-                  await Linking.openURL(s3Url);
-                  Alert.alert(
-                    '다운로드 안내',
-                    '브라우저에서 영상이 열렸습니다.\n\n영상을 다운로드하려면:\n1. 브라우저에서 영상 우클릭\n2. "다른 이름으로 저장" 또는 "영상 저장"\n3. 갤러리 폴더에 저장',
-                    [{ text: '확인' }]
-                  );
-                } else {
-                  Alert.alert('오류', '브라우저에서 영상을 열 수 없습니다.');
-                }
-              } catch (error) {
-                console.error('영상 다운로드 오류:', error);
-                Alert.alert('오류', '영상 다운로드 중 오류가 발생했습니다.');
-              } finally {
-                setDownloadingVideo(false);
-              }
-            }
-          },
-          {
-            text: 'URL 복사',
+            text: '설정으로 이동', 
             onPress: () => {
-              Alert.alert(
-                '영상 URL', 
-                `영상 URL: ${s3Url}\n\n이 URL을 복사해서 브라우저에서 열어보세요.`,
-                [{ text: '확인' }]
-              );
+              if (Platform.OS === 'android') {
+                Linking.openSettings();
+              }
             }
           }
         ]
       );
-      
-    } catch (error) {
-      console.error('영상 처리 오류:', error);
-      Alert.alert('오류', '영상 처리 중 오류가 발생했습니다.');
-    } finally {
-      setDownloadingVideo(false);
+      return;
     }
-  };
 
-  // 피드백과 영상 함께 받기 함수
-  const handleGetFeedbackWithVideo = async (setIndex) => {
-    try {
-      // 피드백 데이터 가져오기
-      await fetchFeedback();
-      
-      // 해당 세트의 S3 키 생성
-      const set = exerciseSets[selectedExercise][setIndex];
-      const weightVal = set.weight || '0';
-      const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, "");
-      const s3Key = `${user.id}_${user.username || user.name}_${weightVal}_${timestamp}.mp4`;
-      
-      // 바로 갤러리에 저장 시도
-      await downloadAndSaveToGallery(s3Key);
-      
-      // 피드백 받기 상태 업데이트
-      setFeedbackReceivedArr(prev => {
-        const newArr = [...prev];
-        newArr[setIndex] = false;
-        return newArr;
-      });
-      
-    } catch (error) {
-      console.error('피드백 받기 오류:', error);
-      Alert.alert('오류', '피드백을 받는 중 오류가 발생했습니다.');
+    // ✅ Presigned GET URL 요청 (분석된 영상 다운로드용)
+    const prefix = s3Key.startsWith("fitvideoresult/") ? "" : "fitvideoresult/";
+    const res = await fetch(`http://13.209.67.129:8000/s3/presigned-url?key=${prefix}${s3Key}`);
+    if (!res.ok) throw new Error("Presigned URL 발급 실패");
+    const { url: s3Url } = await res.json();
+
+    Alert.alert(
+      '영상 다운로드',
+      '피드백 영상을 어떻게 받으시겠습니까?',
+      [
+        { text: '취소', style: 'cancel' },
+        { 
+          text: '브라우저에서 열기', 
+          onPress: async () => {
+            try {
+              const supported = await Linking.canOpenURL(s3Url);
+              if (supported) {
+                await Linking.openURL(s3Url);
+                Alert.alert(
+                  '다운로드 안내',
+                  '브라우저에서 영상이 열렸습니다.\n\n우클릭 또는 "공유 > 저장"을 통해 저장할 수 있습니다.',
+                  [{ text: '확인' }]
+                );
+              } else {
+                Alert.alert('오류', '브라우저에서 영상을 열 수 없습니다.');
+              }
+            } catch (error) {
+              console.error('영상 열기 오류:', error);
+              Alert.alert('오류', '브라우저에서 영상을 여는 중 오류가 발생했습니다.');
+            } finally {
+              setDownloadingVideo(false);
+            }
+          }
+        },
+        {
+          text: 'URL 복사',
+          onPress: () => {
+            Alert.alert(
+              '영상 URL', 
+              `영상 URL: ${s3Url}\n\n이 URL을 복사해서 브라우저에 붙여넣어 확인하세요.`,
+              [{ text: '확인' }]
+            );
+          }
+        }
+      ]
+    );
+    
+  } catch (error) {
+    console.error('영상 처리 오류:', error);
+    Alert.alert('오류', '영상 처리 중 오류가 발생했습니다.');
+  } finally {
+    setDownloadingVideo(false);
+  }
+};
+
+
+const handleGetFeedbackWithVideo = async (setIndex) => {
+  try {
+    // 🔄 분석 결과 피드백 불러오기
+    const res = await fetch(`http://13.209.67.129:8000/workouts/users/${user.id}/today?exercise=${selectedExercise}`);
+    const workoutList = await res.json();
+    const workout = workoutList[setIndex];
+    const s3Key = workout?.s3_key;
+
+    if (!s3Key) {
+      Alert.alert("오류", "분석된 영상 경로를 찾을 수 없습니다.");
+      return;
     }
-  };
+
+    // ✅ 존재하는 분석된 영상 경로로 presigned GET 요청
+    await downloadAndSaveToGallery(s3Key);
+
+    setFeedbackReceivedArr(prev => {
+      const newArr = [...prev];
+      newArr[setIndex] = true;
+      return newArr;
+    });
+
+  } catch (error) {
+    console.error('피드백 받기 오류:', error);
+    Alert.alert('오류', '피드백을 받는 중 오류가 발생했습니다.');
+  }
+};
+
 
   const handleExerciseChange = (itemValue) => {
     setSelectedExercise(itemValue);
   };
 
   const handleSetChange = (idx, field, value) => {
-    setExerciseSets(prev => ({
+  setExerciseSets(prev => {
+    const updatedSets = prev[selectedExercise].map((set, i) => {
+      if (i === idx) {
+        return {
+          ...set,
+          [field]: value
+        };
+      } else {
+        return set;
+      }
+    });
+
+    return {
       ...prev,
-      [selectedExercise]: prev[selectedExercise].map((s, i) =>
-        i === idx ? { ...s, [field]: value } : s
-      ),
-    }));
-  };
+      [selectedExercise]: updatedSets
+    };
+  });
+};
+
 
   const handleAddSet = () => {
     setExerciseSets(prev => ({

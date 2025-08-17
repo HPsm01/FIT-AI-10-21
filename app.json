@@ -20,14 +20,14 @@
     },
     "android": {
       "jsEngine": "hermes",
+      "package": "com.psm3464.FE",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.MEDIA_LIBRARY",
         "android.permission.RECORD_AUDIO"
-      ],
-      "package": "com.psm3464.FE"
+      ]
     },
     "plugins": [
       [

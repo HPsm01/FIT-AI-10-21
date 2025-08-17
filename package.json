@@ -35,7 +35,7 @@
     "react-native-fs": "^2.20.0",
     "react-native-gesture-handler": "~2.12.0",
     "react-native-gifted-charts": "^1.4.61",
-    "react-native-permissions": "^5.4.2",
+    "react-native-permissions": "^3.8.4",
     "react-native-reanimated": "~3.3.0",
     "react-native-safe-area-context": "4.6.3",
     "react-native-screens": "~3.22.0",
@@ -44,13 +44,10 @@
     "react-native-web": "~0.19.6"
   },
   "overrides": {
-    "expo-modules-autolinking": "~1.5.0",
-    "@expo/config-plugins": "~7.2.2",
     "react-native-svg": "13.9.0"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",
-    "@expo/config-plugins": "~7.2.2",
     "@expo/metro-config": "~0.10.0",
     "@expo/prebuild-config": "~6.2.4",
     "@types/istanbul-lib-coverage": "^2.0.6",
@@ -59,14 +56,5 @@
     "metro-resolver": "^0.82.0",
     "typescript": "^5.3.3"
   },
-  "private": true,
-  "expo": {
-    "doctor": {
-      "reactNativeDirectoryCheck": {
-        "listUnknownPackages": false
-      },
-      "checkPackageVersions": false,
-      "checkMetroConfig": false
-    }
-  }
+  "private": true
 }
