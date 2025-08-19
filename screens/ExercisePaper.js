@@ -8,6 +8,7 @@ import { UserContext } from './UserContext';
 import { useFocusEffect } from '@react-navigation/native';
 import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import React from 'react';
+import CommonHeader from './CommonHeader';
 
 const API_URL = 'http://13.209.67.129:8000';
 

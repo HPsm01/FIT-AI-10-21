@@ -16,11 +16,12 @@ import { useFocusEffect } from '@react-navigation/native';
 import { BackHandler } from 'react-native';
 import React from 'react';
 import { gymTheme, gymStyles } from '../styles/theme';
+import CommonHeader from './CommonHeader';
 
 const API_URL = "http://13.209.67.129:8000";
 
 const CheckOutScreen = ({ navigation }) => {
-  const { user } = useContext(UserContext);
+  const { user, logoutUser } = useContext(UserContext);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -91,15 +92,17 @@ const CheckOutScreen = ({ navigation }) => {
 
       Alert.alert(
         "퇴실 완료",
-        `입실: ${inTime.toLocaleString()}\n퇴실: ${outTime.toLocaleString()}\n체류 시간: ${hours}시간 ${minutes}분`,
+        `입실: ${inTime.toLocaleString()}\n퇴실: ${outTime.toLocaleString()}\n체류 시간: ${hours}시간 ${minutes}분\n\n운동을 완료했습니다. 입실 화면으로 돌아갑니다.`,
         [
           {
             text: "확인",
-            onPress: () =>
+            onPress: () => {
+              // 퇴실 완료 후 입실 화면으로 이동
               navigation.reset({
                 index: 0,
-                routes: [{ name: "Home" }],
-              }),
+                routes: [{ name: "CheckIn" }],
+              });
+            },
           },
         ]
       );
@@ -152,11 +155,12 @@ const CheckOutScreen = ({ navigation }) => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={gymTheme.colors.primary} />
       
-      {/* 헤더 */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>GYM BUDDY</Text>
-        <Text style={styles.headerSubtitle}>운동 완료하기</Text>
-      </View>
+      {/* 공통 헤더 */}
+      <CommonHeader 
+        navigation={navigation}
+        title="운동 완료하기"
+        showBackButton={false}
+      />
 
       {/* 메인 콘텐츠 */}
       <View style={styles.content}>
@@ -175,6 +179,17 @@ const CheckOutScreen = ({ navigation }) => {
             <Text style={styles.checkOutIcon}>🚪</Text>
             <Text style={styles.checkOutText}>퇴실하기</Text>
             <Text style={styles.checkOutSubtext}>운동을 마칩니다</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* 오늘의 운동 버튼 */}
+        <TouchableOpacity 
+          style={styles.exerciseButton} 
+          onPress={() => navigation.navigate("MyExercise")}
+        >
+          <View style={styles.exerciseContent}>
+            <Text style={styles.exerciseIcon}>🏋️</Text>
+            <Text style={styles.exerciseText}>오늘의 운동</Text>
           </View>
         </TouchableOpacity>
 
@@ -221,26 +236,7 @@ const styles = StyleSheet.create({
     color: gymTheme.colors.textSecondary,
   },
   
-  header: {
-    backgroundColor: gymTheme.colors.secondary,
-    paddingTop: 60,
-    paddingBottom: 30,
-    paddingHorizontal: gymTheme.spacing.lg,
-    alignItems: 'center',
-  },
-  
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: gymTheme.colors.accent,
-    letterSpacing: 2,
-    marginBottom: 8,
-  },
-  
-  headerSubtitle: {
-    fontSize: 16,
-    color: gymTheme.colors.textSecondary,
-  },
+
   
   content: {
     flex: 1,
@@ -306,6 +302,31 @@ const styles = StyleSheet.create({
     color: gymTheme.colors.textSecondary,
   },
   
+  exerciseButton: {
+    backgroundColor: gymTheme.colors.accent,
+    borderRadius: gymTheme.borderRadius.large,
+    padding: gymTheme.spacing.lg,
+    marginBottom: gymTheme.spacing.md,
+    ...gymTheme.shadows.medium,
+  },
+  
+  exerciseContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  
+  exerciseIcon: {
+    fontSize: 24,
+    marginRight: gymTheme.spacing.sm,
+  },
+  
+  exerciseText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: gymTheme.colors.text,
+  },
+
   profileButton: {
     backgroundColor: gymTheme.colors.card,
     borderRadius: gymTheme.borderRadius.large,

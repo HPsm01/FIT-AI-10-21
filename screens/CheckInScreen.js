@@ -13,6 +13,7 @@ import { UserContext } from "./UserContext";
 import PropTypes from 'prop-types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { gymTheme, gymStyles } from '../styles/theme';
+import CommonHeader from './CommonHeader';
 
 const API_URL = "http://13.209.67.129:8000";
 
@@ -99,11 +100,12 @@ const CheckInScreen = ({ navigation }) => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={gymTheme.colors.primary} />
       
-      {/* 헤더 */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>GYM BUDDY</Text>
-        <Text style={styles.headerSubtitle}>운동 시작하기</Text>
-      </View>
+      {/* 공통 헤더 */}
+      <CommonHeader 
+        navigation={navigation}
+        title="운동 시작하기"
+        showBackButton={false}
+      />
 
       {/* 메인 콘텐츠 */}
       <View style={styles.content}>

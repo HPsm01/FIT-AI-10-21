@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useContext, useLayoutEffect } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity, StatusBar } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { UserContext } from './UserContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { gymTheme, gymStyles } from '../styles/theme';
+import CommonHeader from './CommonHeader';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -87,7 +88,7 @@ export default function TotalExerciseScreen({ navigation }) {
   const [todayKcal, setTodayKcal] = useState({});
   const [weekKcal, setWeekKcal] = useState({});
   const [monthKcal, setMonthKcal] = useState({});
-  const [elapsed, setElapsed] = useState('00:00:00');
+
   const [customMode, setCustomMode] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -98,28 +99,79 @@ export default function TotalExerciseScreen({ navigation }) {
   const [endMonth, setEndMonth] = useState(String(today.getMonth() + 1));
   const [endDay, setEndDay] = useState(String(today.getDate()));
   const [customKcal, setCustomKcal] = useState({});
+  const [exerciseSets, setExerciseSets] = useState({
+    day: { bench: { count: 0, time: 0 }, deadlift: { count: 0, time: 0 }, squat: { count: 0, time: 0 } },
+    week: { bench: { count: 0, time: 0 }, deadlift: { count: 0, time: 0 }, squat: { count: 0, time: 0 } },
+    month: { bench: { count: 0, time: 0 }, deadlift: { count: 0, time: 0 }, squat: { count: 0, time: 0 } },
+    custom: { bench: { count: 0, time: 0 }, deadlift: { count: 0, time: 0 }, squat: { count: 0, time: 0 } },
+  });
 
-  const exerciseDataMap = {
-    day: {
-      bench: { count: todayBenchReps, time: (todayBenchReps * 5) },
-      deadlift: { count: todayDeadliftReps, time: (todayDeadliftReps * 5) },
-      squat: { count: todaySquatReps, time: (todaySquatReps * 5) },
-    },
-    week: {
-      bench: { count: 0, time: 0 },
-      deadlift: { count: 0, time: 0 },
-      squat: { count: 0, time: 0 },
-    },
-    month: {
-      bench: { count: 0, time: 0 },
-      deadlift: { count: 0, time: 0 },
-      squat: { count: 0, time: 0 },
-    },
-    custom: {
-      bench: { count: 0, time: 0 },
-      deadlift: { count: 0, time: 0 },
-      squat: { count: 0, time: 0 },
-    },
+  const exerciseDataMap = exerciseSets;
+
+
+
+  // AsyncStorage에서 운동 데이터 불러오기
+  const loadExerciseDataFromStorage = async (periodType) => {
+    try {
+      let startDate, endDate;
+      
+      if (periodType === 'day') {
+        startDate = endDate = getTodayStr();
+      } else if (periodType === 'week') {
+        const weekRange = getWeekRange();
+        startDate = weekRange.start;
+        endDate = weekRange.end;
+      } else if (periodType === 'month') {
+        const monthRange = getMonthRange();
+        startDate = monthRange.start;
+        endDate = monthRange.end;
+      } else if (periodType === 'custom') {
+        // custom의 경우 startDate와 endDate가 이미 설정되어 있음
+        return;
+      }
+
+      if (!startDate || !endDate) return;
+
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const exerciseData = { bench: 0, deadlift: 0, squat: 0 };
+
+      // 날짜 범위 내의 모든 운동 데이터를 수집
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().slice(0, 10);
+        const key = `exerciseSets_${dateStr}`;
+        const saved = await AsyncStorage.getItem(key);
+        
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          Object.entries(parsed).forEach(([exercise, sets]) => {
+            const completedSets = sets.filter(set => set.weight && set.weight.trim() !== '');
+            if (exercise === 'bench_press') {
+              exerciseData.bench += completedSets.length;
+            } else if (exercise === 'deadlift') {
+              exerciseData.deadlift += completedSets.length;
+            } else if (exercise === 'squat') {
+              exerciseData.squat += completedSets.length;
+            }
+          });
+        }
+      }
+
+      // exerciseDataMap 업데이트
+      setExerciseSets(prev => ({
+        ...prev,
+        [periodType]: {
+          bench: { count: exerciseData.bench, time: exerciseData.bench * 5 },
+          deadlift: { count: exerciseData.deadlift, time: exerciseData.deadlift * 5 },
+          squat: { count: exerciseData.squat, time: exerciseData.squat * 5 },
+        }
+      }));
+
+
+
+    } catch (e) {
+      console.error('운동 데이터 불러오기 실패:', e);
+    }
   };
 
   const exerciseLabels = ['벤치프레스', '데드리프트', '스쿼트'];
@@ -175,6 +227,73 @@ export default function TotalExerciseScreen({ navigation }) {
     return { start: toStr(first), end: toStr(last) };
   }
 
+  // 칼로리 API 호출 함수들
+  const fetchTodayKcal = async () => {
+    try {
+      console.log('🔥 fetchTodayKcal 시작 - userId:', user.id);
+      const types = ['bench', 'squat', 'deadlift'];
+      const results = {};
+      for (const type of types) {
+        const url = `http://13.209.67.129:8000/workouts/users/${user.id}/today/${type}-kcal`;
+        console.log(`🔥 ${type} kcal API 호출:`, url);
+        const response = await fetch(url);
+        console.log(`🔥 ${type} kcal 응답 상태:`, response.status);
+        if (!response.ok) throw new Error(`${type} kcal fetch failed: ${response.status}`);
+        const data = await response.json();
+        console.log(`🔥 ${type} kcal 응답 데이터:`, data);
+        results[`${type}_kcal`] = data[`${type}_kcal`] || 0;
+      }
+      console.log('🔥 최종 todayKcal 결과:', results);
+      setTodayKcal(results);
+    } catch (error) {
+      console.error("🔥 Error fetching today kcal by type:", error);
+    }
+  };
+
+  const fetchWeekKcal = async () => {
+    try {
+      console.log('🔥 fetchWeekKcal 시작 - userId:', user.id);
+      const types = ['bench', 'squat', 'deadlift'];
+      const results = {};
+      for (const type of types) {
+        const url = `http://13.209.67.129:8000/workouts/users/${user.id}/week/${type}-kcal`;
+        console.log(`🔥 ${type} week kcal API 호출:`, url);
+        const response = await fetch(url);
+        console.log(`🔥 ${type} week kcal 응답 상태:`, response.status);
+        if (!response.ok) throw new Error(`${type} week kcal fetch failed: ${response.status}`);
+        const data = await response.json();
+        console.log(`🔥 ${type} week kcal 응답 데이터:`, data);
+        results[`${type}_kcal`] = data[`${type}_kcal`] || 0;
+      }
+      console.log('🔥 최종 weekKcal 결과:', results);
+      setWeekKcal(results);
+    } catch (error) {
+      console.error("🔥 Error fetching week kcal by type:", error);
+    }
+  };
+
+  const fetchMonthKcal = async () => {
+    try {
+      console.log('🔥 fetchMonthKcal 시작 - userId:', user.id);
+      const types = ['bench', 'squat', 'deadlift'];
+      const results = {};
+      for (const type of types) {
+        const url = `http://13.209.67.129:8000/workouts/users/${user.id}/month/${type}-kcal`;
+        console.log(`🔥 ${type} month kcal API 호출:`, url);
+        const response = await fetch(url);
+        console.log(`🔥 ${type} month kcal 응답 상태:`, response.status);
+        if (!response.ok) throw new Error(`${type} month kcal fetch failed: ${response.status}`);
+        const data = await response.json();
+        console.log(`🔥 ${type} month kcal 응답 데이터:`, data);
+        results[`${type}_kcal`] = data[`${type}_kcal`] || 0;
+      }
+      console.log('🔥 최종 monthKcal 결과:', results);
+      setMonthKcal(results);
+    } catch (error) {
+      console.error("🔥 Error fetching month kcal by type:", error);
+    }
+  };
+
   const handlePeriod = (type) => {
     setPeriod(type);
     setCustomMode(false);
@@ -183,16 +302,25 @@ export default function TotalExerciseScreen({ navigation }) {
       setStartDate(t);
       setEndDate(t);
       console.log('오늘:', t, '~', t);
+      loadExerciseDataFromStorage('day');
+      // 오늘 칼로리 API 호출
+      fetchTodayKcal();
     } else if (type === 'week') {
       const r = getWeekRange();
       setStartDate(r.start);
       setEndDate(r.end);
       console.log('주간:', r.start, '~', r.end);
+      loadExerciseDataFromStorage('week');
+      // 주간 칼로리 API 호출
+      fetchWeekKcal();
     } else if (type === 'month') {
       const r = getMonthRange();
       setStartDate(r.start);
       setEndDate(r.end);
       console.log('이번달:', r.start, '~', r.end);
+      loadExerciseDataFromStorage('month');
+      // 이번달 칼로리 API 호출
+      fetchMonthKcal();
     }
   };
 
@@ -207,60 +335,29 @@ export default function TotalExerciseScreen({ navigation }) {
       }
     };
 
-    const fetchTodayKcal = async () => {
-      try {
-        const types = ['bench', 'squat', 'deadlift'];
-        const results = {};
-        for (const type of types) {
-          const response = await fetch(`http://13.209.67.129:8000/workouts/users/${user.id}/today/${type}-kcal`);
-          if (!response.ok) throw new Error(`${type} kcal fetch failed`);
-          const data = await response.json();
-          results[`${type}_kcal`] = data[`${type}_kcal`] || 0;
-        }
-        setTodayKcal(results);
-      } catch (error) {
-        console.error("🔥 Error fetching kcal by type:", error);
-      }
-    };
-
-    const fetchWeekKcal = async () => {
-      try {
-        const types = ['bench', 'squat', 'deadlift'];
-        const results = {};
-        for (const type of types) {
-          const response = await fetch(`http://13.209.67.129:8000/workouts/users/${user.id}/week/${type}-kcal`);
-          if (!response.ok) throw new Error(`${type} week kcal fetch failed`);
-          const data = await response.json();
-          results[`${type}_kcal`] = data[`${type}_kcal`] || 0;
-        }
-        setWeekKcal(results);
-      } catch (error) {
-        console.error("🔥 Error fetching week kcal by type:", error);
-      }
-    };
-
-    const fetchMonthKcal = async () => {
-      try {
-        const types = ['bench', 'squat', 'deadlift'];
-        const results = {};
-        for (const type of types) {
-          const response = await fetch(`http://13.209.67.129:8000/workouts/users/${user.id}/month/${type}-kcal`);
-          if (!response.ok) throw new Error(`${type} month kcal fetch failed`);
-          const data = await response.json();
-          results[`${type}_kcal`] = data[`${type}_kcal`] || 0;
-        }
-        setMonthKcal(results);
-      } catch (error) {
-        console.error("🔥 Error fetching month kcal by type:", error);
-      }
-    };
-
     fetchTodayReps('squat', setTodaySquatReps);
     fetchTodayReps('deadlift', setTodayDeadliftReps);
     fetchTodayReps('bench', setTodayBenchReps);
     fetchTodayKcal();
     fetchWeekKcal();
     fetchMonthKcal();
+    
+    // AsyncStorage에서 운동 데이터 불러오기
+    loadExerciseDataFromStorage('day');
+    loadExerciseDataFromStorage('week');
+    loadExerciseDataFromStorage('month');
+    
+    // today 데이터를 exerciseSets에 반영
+    setExerciseSets(prev => ({
+      ...prev,
+      day: {
+        bench: { count: todayBenchReps, time: todayBenchReps * 5 },
+        deadlift: { count: todayDeadliftReps, time: todayDeadliftReps * 5 },
+        squat: { count: todaySquatReps, time: todaySquatReps * 5 },
+      }
+    }));
+
+
 
     const setTodayTime = async () => {
       const checkInTimeStr = await AsyncStorage.getItem('checkInTime');
@@ -276,36 +373,10 @@ export default function TotalExerciseScreen({ navigation }) {
     };
     setTodayTime();
 
-    let timer;
-    const startTimer = async () => {
-      const checkInTimeStr = await AsyncStorage.getItem('checkInTime');
-      if (checkInTimeStr) {
-        const checkInTime = new Date(checkInTimeStr);
-        timer = setInterval(() => {
-          const now = new Date();
-          const diff = now - checkInTime;
-          const h = String(Math.floor(diff / 3600000)).padStart(2, '0');
-          const m = String(Math.floor((diff % 3600000) / 60000)).padStart(2, '0');
-          const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, '0');
-          setElapsed(`${h}:${m}:${s}`);
-        }, 1000);
-      } else {
-        setElapsed('00:00:00');
-      }
-    };
-    startTimer();
-    return () => {
-      if (timer) clearInterval(timer);
-    };
-  }, [user.id]);
 
-  useLayoutEffect(() => {
-    if (navigation && navigation.setOptions) {
-      navigation.setOptions({
-        title: `운동 기록 ${elapsed}`,
-      });
-    }
-  }, [navigation, elapsed]);
+  }, [user.id, todayBenchReps, todayDeadliftReps, todaySquatReps]);
+
+
 
   const renderExerciseTabs = () => (
     <View style={styles.exerciseTabs}>
@@ -339,21 +410,32 @@ export default function TotalExerciseScreen({ navigation }) {
     setCustomMode(false);
     setPeriod('custom');
     console.log('직접입력:', s, '~', e);
+    loadExerciseDataFromStorage('custom');
+    // custom 기간 칼로리 API 호출은 useEffect에서 자동으로 처리됨
   };
 
   useEffect(() => {
     const fetchCustomKcal = async () => {
       if (period !== 'custom' || !startDate || !endDate) return;
       try {
+        console.log('🔥 fetchCustomKcal 시작 - userId:', user.id, '기간:', startDate, '~', endDate);
         const types = ['bench', 'squat', 'deadlift'];
         const results = {};
         for (const type of types) {
-          const response = await fetch(`http://13.209.67.129:8000/workouts/users/${user.id}/custom/${startDate}/${endDate}/${type}-kcal`);
-          if (!response.ok) throw new Error(`${type} custom kcal fetch failed`);
+          const url = `http://13.209.67.129:8000/workouts/users/${user.id}/custom/${startDate}/${endDate}/${type}-kcal`;
+          console.log(`🔥 ${type} custom kcal API 호출:`, url);
+          const response = await fetch(url);
+          console.log(`🔥 ${type} custom kcal 응답 상태:`, response.status);
+          if (!response.ok) throw new Error(`${type} custom kcal fetch failed: ${response.status}`);
           const data = await response.json();
+          console.log(`🔥 ${type} custom kcal 응답 데이터:`, data);
           results[`${type}_kcal`] = data[`${type}_kcal`] || 0;
         }
+        console.log('🔥 최종 customKcal 결과:', results);
         setCustomKcal(results);
+        
+        // custom 기간의 운동 데이터도 불러오기
+        loadCustomExerciseData();
       } catch (error) {
         console.error('🔥 Error fetching custom kcal by type:', error);
       }
@@ -361,15 +443,64 @@ export default function TotalExerciseScreen({ navigation }) {
     fetchCustomKcal();
   }, [period, startDate, endDate, user.id]);
 
+  // custom 기간의 운동 데이터 불러오기
+  const loadCustomExerciseData = async () => {
+    try {
+      if (!startDate || !endDate) return;
+
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const exerciseData = { bench: 0, deadlift: 0, squat: 0 };
+
+      // 날짜 범위 내의 모든 운동 데이터를 수집
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().slice(0, 10);
+        const key = `exerciseSets_${dateStr}`;
+        const saved = await AsyncStorage.getItem(key);
+        
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          Object.entries(parsed).forEach(([exercise, sets]) => {
+            const completedSets = sets.filter(set => set.weight && set.weight.trim() !== '');
+            if (exercise === 'bench_press') {
+              exerciseData.bench += completedSets.length;
+            } else if (exercise === 'deadlift') {
+              exerciseData.deadlift += completedSets.length;
+            } else if (exercise === 'squat') {
+              exerciseData.squat += completedSets.length;
+            }
+          });
+        }
+      }
+
+      // exerciseSets 업데이트
+      setExerciseSets(prev => ({
+        ...prev,
+        custom: {
+          bench: { count: exerciseData.bench, time: exerciseData.bench * 5 },
+          deadlift: { count: exerciseData.deadlift, time: exerciseData.deadlift * 5 },
+          squat: { count: exerciseData.squat, time: exerciseData.squat * 5 },
+        }
+      }));
+
+
+
+    } catch (e) {
+      console.error('custom 운동 데이터 불러오기 실패:', e);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={gymTheme.colors.primary} />
       
-      {/* 헤더 */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>운동 기록 분석</Text>
-        <Text style={styles.headerSubtitle}>데이터로 보는 나의 운동</Text>
-      </View>
+      {/* 공통 헤더 */}
+      <CommonHeader 
+        navigation={navigation}
+        title="운동 기록 분석"
+        showBackButton={true}
+        onBackPress={() => navigation.goBack()}
+      />
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
         {/* 기간 선택 탭 */}
@@ -537,21 +668,23 @@ export default function TotalExerciseScreen({ navigation }) {
           </View>
         )}
 
-        {/* 오늘 운동 요약 */}
+        {/* 선택된 기간 운동 요약 */}
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryCardTitle}>오늘의 운동 요약</Text>
+          <Text style={styles.summaryCardTitle}>
+            {period === 'day' ? '오늘의' : period === 'week' ? '주간' : period === 'month' ? '이번달' : '선택기간'} 운동 요약
+          </Text>
           <View style={styles.summaryItems}>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryItemIcon}>🏋️</Text>
-              <Text style={styles.summaryItemText}>벤치프레스: {exerciseDataMap.day.bench.count}회</Text>
+              <Text style={styles.summaryItemText}>벤치프레스: {exerciseDataMap[period]?.bench?.count || 0}회</Text>
             </View>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryItemIcon}>🦵</Text>
-              <Text style={styles.summaryItemText}>스쿼트: {exerciseDataMap.day.squat.count}회</Text>
+              <Text style={styles.summaryItemText}>스쿼트: {exerciseDataMap[period]?.squat?.count || 0}회</Text>
             </View>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryItemIcon}>💪</Text>
-              <Text style={styles.summaryItemText}>데드리프트: {exerciseDataMap.day.deadlift.count}회</Text>
+              <Text style={styles.summaryItemText}>데드리프트: {exerciseDataMap[period]?.deadlift?.count || 0}회</Text>
             </View>
           </View>
         </View>
@@ -577,6 +710,10 @@ export default function TotalExerciseScreen({ navigation }) {
           <View style={styles.calorieCard}>
             <Text style={styles.calorieCardTitle}>
               운동별 칼로리 ({period === 'day' ? '오늘' : period === 'week' ? '주간' : period === 'month' ? '이번달' : '선택기간'})
+            </Text>
+            {/* 디버깅을 위한 state 값 출력 */}
+            <Text style={styles.debugText}>
+              🔍 Debug - period: {period}, todayKcal: {JSON.stringify(todayKcal)}, weekKcal: {JSON.stringify(weekKcal)}, monthKcal: {JSON.stringify(monthKcal)}, customKcal: {JSON.stringify(customKcal)}
             </Text>
             {exerciseKeys.map((key, idx) => {
               let kcalData;
@@ -939,5 +1076,15 @@ const styles = StyleSheet.create({
   calorieItemText: {
     fontSize: 16,
     color: gymTheme.colors.text,
+  },
+  
+  debugText: {
+    fontSize: 12,
+    color: gymTheme.colors.textMuted,
+    backgroundColor: gymTheme.colors.card,
+    padding: 8,
+    marginBottom: 10,
+    borderRadius: 4,
+    fontFamily: 'monospace',
   },
 });

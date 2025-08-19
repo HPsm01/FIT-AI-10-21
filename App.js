@@ -1,10 +1,9 @@
-import { useState } from "react";
-import { UserContext } from "./screens/UserContext";
+import { useContext } from "react";
+import { UserProvider, UserContext } from "./screens/UserContext";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import { gymTheme } from "./styles/theme";
 
-import HomeScreen from "./screens/HomeScreen";
 import LoginScreen from "./screens/LoginScreen"; 
 import CheckInScreen from "./screens/CheckInScreen";
 import CheckOutScreen from "./screens/CheckOutScreen";
@@ -23,7 +22,6 @@ const linking = {
   prefixes: ["feapp://"],
   config: {
     screens: {
-      Home: "home",
       Login: "login",
       SignUp: "signup",
       CheckIn: "checkin",
@@ -54,82 +52,84 @@ const screenOptions = {
   },
 };
 
-export default function App() {
-  const [user, setUser] = useState(null);
-
+function AppNavigator() {
+  const { initialRoute, isLoading } = useContext(UserContext);
+  
+  if (isLoading) {
+    return null; // 로딩 중에는 아무것도 표시하지 않음
+  }
+  
   return (
-    <UserContext.Provider value={{ user, setUser }}>
-      <NavigationContainer linking={linking}>
-        <Stack.Navigator 
-          initialRouteName="Home"
-          screenOptions={screenOptions}
-        >
-          <Stack.Screen 
-            name="Home" 
-            component={HomeScreen} 
-            options={{ 
-              title: "GYM BUDDY",
-              headerShown: false 
-            }} 
-          />
-          <Stack.Screen 
-            name="Login" 
-            component={LoginScreen} 
-            options={{ 
-              title: "로그인",
-              headerShown: false 
-            }} 
-          />
-          <Stack.Screen 
-            name="SignUp" 
-            component={SignUpScreen} 
-            options={{ title: "회원 가입" }}
-          />
-          <Stack.Screen 
-            name="CheckIn" 
-            component={CheckInScreen} 
-            options={{ title: "입실" }} 
-          />
-          <Stack.Screen 
-            name="CheckOut" 
-            component={CheckOutScreen} 
-            options={{ title: "퇴실" }} 
-          />
-          <Stack.Screen 
-            name="Profile" 
-            component={ProfileScreen} 
-            options={{ title: "내 정보" }} 
-          />
-          <Stack.Screen 
-            name="MyExercise" 
-            component={MyExerciseScreen} 
-            options={{ 
-              title: "운동 기록",
-              headerShown: false 
-            }} 
-          />
-          <Stack.Screen 
-            name="ServerData" 
-            component={ServerDataScreen} 
-            options={{ title: "서버 데이터" }} 
-          />
-          <Stack.Screen 
-            name="ExercisePaper" 
-            component={ExercisePaper} 
-            options={{ title: "운동 분석지" }} 
-          />
-          <Stack.Screen 
-            name="TotalExercise" 
-            component={TotalExerciseScreen} 
-            options={{ title: "전체 운동 기록" }} 
-          />
-          <Stack.Screen 
-            name="EditProfile" 
-            component={EditProfileScreen} 
-            options={{ title: "내 정보 수정" }} 
-          />
-        </Stack.Navigator>
-      </NavigationContainer>
-    </UserContext.Provider>
+    <NavigationContainer linking={linking}>
+      <Stack.Navigator 
+        initialRouteName={initialRoute}
+        screenOptions={screenOptions}
+      >
+        <Stack.Screen 
+          name="Login" 
+          component={LoginScreen} 
+          options={{ 
+            title: "로그인",
+            headerShown: false 
+          }} 
+        />
+        <Stack.Screen 
+          name="SignUp" 
+          component={SignUpScreen} 
+          options={{ title: "회원 가입" }}
+        />
+        <Stack.Screen 
+          name="CheckIn" 
+          component={CheckInScreen} 
+          options={{ title: "입실" }} 
+        />
+        <Stack.Screen 
+          name="CheckOut" 
+          component={CheckOutScreen} 
+          options={{ title: "퇴실" }} 
+        />
+        <Stack.Screen 
+          name="Profile" 
+          component={ProfileScreen} 
+          options={{ title: "내 정보" }} 
+        />
+        <Stack.Screen 
+          name="MyExercise" 
+          component={MyExerciseScreen} 
+          options={{ 
+            title: "운동 기록",
+            headerShown: false 
+          }} 
+        />
+        <Stack.Screen 
+          name="ServerData" 
+          component={ServerDataScreen} 
+          options={{ title: "서버 데이터" }} 
+        />
+        <Stack.Screen 
+          name="ExercisePaper" 
+          component={ExercisePaper} 
+          options={{ title: "운동 분석지" }} 
+        />
+        <Stack.Screen 
+          name="TotalExercise" 
+          component={TotalExerciseScreen} 
+          options={{ title: "전체 운동 기록" }} 
+        />
+        <Stack.Screen 
+          name="EditProfile" 
+          component={EditProfileScreen} 
+          options={{ title: "내 정보 수정" }} 
+        />
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+}
+
+export default function App() {
+  return (
+    <UserProvider>
+      <AppNavigator />
+    </UserProvider>
   );
 }

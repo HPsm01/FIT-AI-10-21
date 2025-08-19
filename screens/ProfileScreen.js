@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import React from 'react';
 import { gymTheme, gymStyles } from '../styles/theme';
+import CommonHeader from './CommonHeader';
 
 export default function ProfileScreen({ navigation }) {
   const { user, setUser } = useContext(UserContext);
@@ -19,15 +20,7 @@ export default function ProfileScreen({ navigation }) {
     birth: "-",
   };
 
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerLeft: () => (
-        <TouchableOpacity onPress={() => navigation.navigate('CheckOut')}>
-          <Ionicons name="arrow-back" size={28} color={gymTheme.colors.text} style={{ marginLeft: 16 }} />
-        </TouchableOpacity>
-      ),
-    });
-  }, [navigation]);
+
 
   useFocusEffect(
     React.useCallback(() => {
@@ -51,11 +44,13 @@ export default function ProfileScreen({ navigation }) {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={gymTheme.colors.primary} />
       
-      {/* 헤더 */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>내 프로필</Text>
-        <Text style={styles.headerSubtitle}>운동 파트너 정보</Text>
-      </View>
+      {/* 공통 헤더 */}
+      <CommonHeader 
+        navigation={navigation}
+        title="내 프로필"
+        showBackButton={true}
+        onBackPress={() => navigation.goBack()}
+      />
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
         {/* 사용자 정보 카드 */}
@@ -112,61 +107,10 @@ export default function ProfileScreen({ navigation }) {
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => navigation.navigate("MyExercise")}
-          >
-            <View style={styles.actionContent}>
-              <Text style={styles.actionIcon}>🏋️</Text>
-              <Text style={styles.actionTitle}>오늘의 운동</Text>
-              <Text style={styles.actionSubtitle}>운동 기록 및 분석</Text>
-            </View>
-          </TouchableOpacity>
+
         </View>
 
-        {/* 퇴실 버튼 */}
-        <TouchableOpacity
-          style={styles.checkoutButton}
-          onPress={async () => {
-            if (!user) return;
-            const payload = {
-              user_id: user.id,
-              check_out: new Date().toISOString(),
-            };
-            try {
-              const res = await fetch('http://13.209.67.129:8000/visits/checkout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-              });
-              const text = await res.text();
-              if (!res.ok) {
-                let msg = text;
-                try {
-                  const json = JSON.parse(text);
-                  msg = json.detail || json.message || text;
-                } catch {}
-                throw new Error(`${res.status}: ${msg}`);
-              }
-              const data = JSON.parse(text);
-              await AsyncStorage.removeItem('checkInTime');
-              const inTime = new Date(data.check_in);
-              const outTime = new Date(data.check_out);
-              const diffMs = outTime - inTime;
-              const hours = Math.floor(diffMs / 3600000);
-              const minutes = Math.floor((diffMs % 3600000) / 60000);
-              alert(`입실: ${inTime.toLocaleString()}\n퇴실: ${outTime.toLocaleString()}\n체류 시간: ${hours}시간 ${minutes}분`);
-              navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
-            } catch (e) {
-              alert(e.message || '퇴실 처리 중 오류가 발생했습니다.');
-            }
-          }}
-        >
-          <View style={styles.checkoutContent}>
-            <Text style={styles.checkoutIcon}>🚪</Text>
-            <Text style={styles.checkoutText}>퇴실하기</Text>
-          </View>
-        </TouchableOpacity>
+
       </ScrollView>
     </View>
   );

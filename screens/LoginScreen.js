@@ -7,7 +7,7 @@ import { gymTheme, gymStyles } from '../styles/theme';
 const LoginScreen = ({ navigation }) => {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const { setUser } = useContext(UserContext);
+  const { loginUser } = useContext(UserContext);
 
   const handleLogin = async () => {
     if (!name.trim() || !phone.trim()) {
@@ -27,7 +27,7 @@ const LoginScreen = ({ navigation }) => {
       if (response.ok && result.success) {
         console.log("로그인 성공:", result);
         console.log("로그인 성공:", result.userInfo);
-        setUser(result.userInfo);
+        await loginUser(result.userInfo);
 
         // 로그인 성공 시 바로 CheckIn 화면으로 이동
         navigation.navigate("CheckIn");
