@@ -62,6 +62,7 @@ function AppNavigator() {
   return (
     <NavigationContainer linking={linking}>
       <Stack.Navigator 
+        key={initialRoute} // initialRoute가 변경될 때마다 네비게이션 재초기화
         initialRouteName={initialRoute}
         screenOptions={screenOptions}
       >

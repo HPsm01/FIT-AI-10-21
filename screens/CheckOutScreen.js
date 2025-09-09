@@ -33,23 +33,59 @@ const CheckOutScreen = ({ navigation }) => {
             navigation.reset({ index: 0, routes: [{ name: "Login" }] }),
         },
       ]);
+      return;
     }
     
-    (async () => {
-      const checkInTime = await AsyncStorage.getItem('checkInTime');
-      if (!checkInTime) {
-        await AsyncStorage.removeItem('checkInTime');
-        Alert.alert('알림', '입실 기록이 없습니다. 입실 화면으로 이동합니다.', [
-          {
-            text: '확인',
-            onPress: () => navigation.reset({ index: 0, routes: [{ name: 'CheckIn' }] }),
-          },
-        ]);
-      } else {
-        setLoading(false);
-      }
-    })();
+    checkCheckInStatus();
   }, [user]);
+
+  const checkCheckInStatus = async () => {
+    try {
+      // 로컬 AsyncStorage에서 checkInTime 확인
+      const localCheckInTime = await AsyncStorage.getItem('checkInTime');
+      
+      if (localCheckInTime) {
+        // 로컬에 입실 기록이 있는 경우 - 정상적으로 퇴실 화면 표시
+        setLoading(false);
+      } else {
+        // 로컬에 입실 기록이 없는 경우 - 서버에서 확인
+        try {
+          const serverResponse = await fetch(`${API_URL}/visits/last?user_id=${user.id}`);
+          const lastVisit = await serverResponse.json();
+          
+          // 서버에서 입실 상태 확인 (check_in이 있고 check_out이 없는 경우)
+          const isCheckedInOnServer = lastVisit && lastVisit.check_in && !lastVisit.check_out;
+          
+          if (isCheckedInOnServer) {
+            // 서버에는 입실 기록이 있지만 로컬에는 없는 경우 - 로컬 상태 복구
+            await AsyncStorage.setItem('checkInTime', lastVisit.check_in);
+            console.log('서버 상태로 로컬 상태 복구 완료');
+            setLoading(false);
+          } else {
+            // 서버에도 입실 기록이 없는 경우 - 입실 화면으로 이동
+            Alert.alert('알림', '입실 기록이 없습니다. 입실 화면으로 이동합니다.', [
+              {
+                text: '확인',
+                onPress: () => navigation.reset({ index: 0, routes: [{ name: 'CheckIn' }] }),
+              },
+            ]);
+          }
+        } catch (serverError) {
+          console.error('서버 확인 중 오류:', serverError);
+          // 서버 확인 실패 시 입실 화면으로 이동
+          Alert.alert('알림', '입실 기록이 없습니다. 입실 화면으로 이동합니다.', [
+            {
+              text: '확인',
+              onPress: () => navigation.reset({ index: 0, routes: [{ name: 'CheckIn' }] }),
+            },
+          ]);
+        }
+      }
+    } catch (error) {
+      console.error('입실 상태 확인 중 오류:', error);
+      setLoading(false);
+    }
+  };
 
   const handleCheckOut = async () => {
     if (!user) return;
@@ -159,7 +195,6 @@ const CheckOutScreen = ({ navigation }) => {
       <CommonHeader 
         navigation={navigation}
         title="운동 완료하기"
-        showBackButton={false}
       />
 
       {/* 메인 콘텐츠 */}

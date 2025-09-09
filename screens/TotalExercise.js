@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useContext } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity, StatusBar, BackHandler } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { UserContext } from './UserContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { gymTheme, gymStyles } from '../styles/theme';
 import CommonHeader from './CommonHeader';
+import { useFocusEffect } from '@react-navigation/native';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -78,7 +79,7 @@ const SimpleLineChart = ({ data, labels, title }) => {
 
 export default function TotalExerciseScreen({ navigation }) {
   const today = new Date();
-  const { user } = useContext(UserContext);
+  const { user, isLoading } = useContext(UserContext);
   const [todaySquatReps, setTodaySquatReps] = useState(0);
   const [todayDeadliftReps, setTodayDeadliftReps] = useState(0);
   const [todayBenchReps, setTodayBenchReps] = useState(0);
@@ -105,9 +106,9 @@ export default function TotalExerciseScreen({ navigation }) {
     month: { bench: { count: 0, time: 0 }, deadlift: { count: 0, time: 0 }, squat: { count: 0, time: 0 } },
     custom: { bench: { count: 0, time: 0 }, deadlift: { count: 0, time: 0 }, squat: { count: 0, time: 0 } },
   });
+  const [loading, setLoading] = useState(false);
 
   const exerciseDataMap = exerciseSets;
-
 
 
   // AsyncStorage에서 운동 데이터 불러오기
@@ -227,6 +228,157 @@ export default function TotalExerciseScreen({ navigation }) {
     return { start: toStr(first), end: toStr(last) };
   }
 
+  // 날짜 범위를 표시하는 함수
+  function getDateRangeText(periodType) {
+    if (periodType === 'day') {
+      const today = new Date();
+      return `(${today.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })})`;
+    } else if (periodType === 'week') {
+      const weekRange = getWeekRange();
+      const startDate = new Date(weekRange.start);
+      const endDate = new Date(weekRange.end);
+      return `(${startDate.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })} ~ ${endDate.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })})`;
+    } else if (periodType === 'month') {
+      const monthRange = getMonthRange();
+      const startDate = new Date(monthRange.start);
+      return `(${startDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })})`;
+    } else if (periodType === 'custom') {
+      if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        return `(${start.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })} ~ ${end.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })})`;
+      }
+      return '';
+    }
+    return '';
+  }
+
+  // 운동 횟수 API 호출 함수들
+  const fetchTodayReps = async () => {
+    try {
+      console.log('🔥 fetchTodayReps 시작 - userId:', user.id);
+      const types = ['bench', 'squat', 'deadlift'];
+      const results = {};
+      for (const type of types) {
+        const url = `http://13.209.67.129:8000/workouts/users/${user.id}/today/reps?exercise=${type}`;
+        console.log(`🔥 ${type} reps API 호출:`, url);
+        const response = await fetch(url);
+        console.log(`🔥 ${type} reps 응답 상태:`, response.status);
+        if (!response.ok) throw new Error(`${type} reps fetch failed: ${response.status}`);
+        const data = await response.json();
+        console.log(`🔥 ${type} reps 응답 데이터:`, data);
+        results[`${type}_reps`] = data.total_reps || 0;
+      }
+      console.log('🔥 최종 todayReps 결과:', results);
+      
+      // exerciseSets 업데이트
+      setExerciseSets(prev => ({
+        ...prev,
+        day: {
+          bench: { count: results.bench_reps, time: results.bench_reps * 5 },
+          deadlift: { count: results.deadlift_reps, time: results.deadlift_reps * 5 },
+          squat: { count: results.squat_reps, time: results.squat_reps * 5 },
+        }
+      }));
+    } catch (error) {
+      console.error("🔥 Error fetching today reps by type:", error);
+    }
+  };
+
+  const fetchWeekReps = async () => {
+    try {
+      console.log('🔥 fetchWeekReps 시작 - userId:', user.id);
+      const types = ['bench', 'squat', 'deadlift'];
+      const results = {};
+      for (const type of types) {
+        const url = `http://13.209.67.129:8000/workouts/users/${user.id}/week/${type}-reps`;
+        console.log(`🔥 ${type} week reps API 호출:`, url);
+        const response = await fetch(url);
+        console.log(`🔥 ${type} week reps 응답 상태:`, response.status);
+        if (!response.ok) throw new Error(`${type} week reps fetch failed: ${response.status}`);
+        const data = await response.json();
+        console.log(`🔥 ${type} week reps 응답 데이터:`, data);
+        results[`${type}_reps`] = data[`${type}_reps`] || 0;
+      }
+      console.log('🔥 최종 weekReps 결과:', results);
+      
+      // exerciseSets 업데이트
+      setExerciseSets(prev => ({
+        ...prev,
+        week: {
+          bench: { count: results.bench_reps, time: results.bench_reps * 5 },
+          deadlift: { count: results.deadlift_reps, time: results.deadlift_reps * 5 },
+          squat: { count: results.squat_reps, time: results.squat_reps * 5 },
+        }
+      }));
+    } catch (error) {
+      console.error("🔥 Error fetching week reps by type:", error);
+    }
+  };
+
+  const fetchMonthReps = async () => {
+    try {
+      console.log('🔥 fetchMonthReps 시작 - userId:', user.id);
+      const types = ['bench', 'squat', 'deadlift'];
+      const results = {};
+      for (const type of types) {
+        const url = `http://13.209.67.129:8000/workouts/users/${user.id}/month/${type}-reps`;
+        console.log(`🔥 ${type} month reps API 호출:`, url);
+        const response = await fetch(url);
+        console.log(`🔥 ${type} month reps 응답 상태:`, response.status);
+        if (!response.ok) throw new Error(`${type} month reps fetch failed: ${response.status}`);
+        const data = await response.json();
+        console.log(`🔥 ${type} month reps 응답 데이터:`, data);
+        results[`${type}_reps`] = data[`${type}_reps`] || 0;
+      }
+      console.log('🔥 최종 monthReps 결과:', results);
+      
+      // exerciseSets 업데이트
+      setExerciseSets(prev => ({
+        ...prev,
+        month: {
+          bench: { count: results.bench_reps, time: results.bench_reps * 5 },
+          deadlift: { count: results.deadlift_reps, time: results.deadlift_reps * 5 },
+          squat: { count: results.squat_reps, time: results.squat_reps * 5 },
+        }
+      }));
+    } catch (error) {
+      console.error("🔥 Error fetching month reps by type:", error);
+    }
+  };
+
+  const fetchCustomReps = async () => {
+    try {
+      if (!startDate || !endDate) return;
+      console.log('🔥 fetchCustomReps 시작 - userId:', user.id, '기간:', startDate, '~', endDate);
+      const types = ['bench', 'squat', 'deadlift'];
+      const results = {};
+      for (const type of types) {
+        const url = `http://13.209.67.129:8000/workouts/users/${user.id}/custom/${startDate}/${endDate}/${type}-reps`;
+        console.log(`🔥 ${type} custom reps API 호출:`, url);
+        const response = await fetch(url);
+        console.log(`🔥 ${type} custom reps 응답 상태:`, response.status);
+        if (!response.ok) throw new Error(`${type} custom reps fetch failed: ${response.status}`);
+        const data = await response.json();
+        console.log(`🔥 ${type} custom reps 응답 데이터:`, data);
+        results[`${type}_reps`] = data[`${type}_reps`] || 0;
+      }
+      console.log('🔥 최종 customReps 결과:', results);
+      
+      // exerciseSets 업데이트
+      setExerciseSets(prev => ({
+        ...prev,
+        custom: {
+          bench: { count: results.bench_reps, time: results.bench_reps * 5 },
+          deadlift: { count: results.deadlift_reps, time: results.deadlift_reps * 5 },
+          squat: { count: results.squat_reps, time: results.squat_reps * 5 },
+        }
+      }));
+    } catch (error) {
+      console.error('🔥 Error fetching custom reps by type:', error);
+    }
+  };
+
   // 칼로리 API 호출 함수들
   const fetchTodayKcal = async () => {
     try {
@@ -303,7 +455,8 @@ export default function TotalExerciseScreen({ navigation }) {
       setEndDate(t);
       console.log('오늘:', t, '~', t);
       loadExerciseDataFromStorage('day');
-      // 오늘 칼로리 API 호출
+      // 오늘 운동 횟수와 칼로리 API 호출
+      fetchTodayReps();
       fetchTodayKcal();
     } else if (type === 'week') {
       const r = getWeekRange();
@@ -311,7 +464,8 @@ export default function TotalExerciseScreen({ navigation }) {
       setEndDate(r.end);
       console.log('주간:', r.start, '~', r.end);
       loadExerciseDataFromStorage('week');
-      // 주간 칼로리 API 호출
+      // 주간 운동 횟수와 칼로리 API 호출
+      fetchWeekReps();
       fetchWeekKcal();
     } else if (type === 'month') {
       const r = getMonthRange();
@@ -319,35 +473,39 @@ export default function TotalExerciseScreen({ navigation }) {
       setEndDate(r.end);
       console.log('이번달:', r.start, '~', r.end);
       loadExerciseDataFromStorage('month');
-      // 이번달 칼로리 API 호출
+      // 이번달 운동 횟수와 칼로리 API 호출
+      fetchMonthReps();
       fetchMonthKcal();
     }
   };
 
   useEffect(() => {
-    const fetchTodayReps = async (type, setter) => {
-      try {
-        const response = await fetch(`http://13.209.67.129:8000/workouts/users/${user.id}/today/${type}-reps`);
-        const data = await response.json();
-        setter(data[`${type}_reps`] || 0);
-      } catch (error) {
-        console.error(`Error fetching ${type} reps:`, error);
+    if (user?.id) {
+      // 기간별 운동 횟수와 칼로리 데이터 가져오기
+      if (period === 'day') {
+        fetchTodayReps();
+        fetchTodayKcal();
+      } else if (period === 'week') {
+        fetchWeekReps();
+        fetchWeekKcal();
+      } else if (period === 'month') {
+        fetchMonthReps();
+        fetchMonthKcal();
+      } else if (period === 'custom') {
+        fetchCustomReps();
+        fetchCustomKcal();
       }
-    };
-
-    fetchTodayReps('squat', setTodaySquatReps);
-    fetchTodayReps('deadlift', setTodayDeadliftReps);
-    fetchTodayReps('bench', setTodayBenchReps);
-    fetchTodayKcal();
-    fetchWeekKcal();
-    fetchMonthKcal();
+    }
     
     // AsyncStorage에서 운동 데이터 불러오기
     loadExerciseDataFromStorage('day');
     loadExerciseDataFromStorage('week');
     loadExerciseDataFromStorage('month');
-    
-    // today 데이터를 exerciseSets에 반영
+  }, [user?.id, period]);
+
+
+  // today 데이터를 exerciseSets에 반영하는 useEffect
+  useEffect(() => {
     setExerciseSets(prev => ({
       ...prev,
       day: {
@@ -356,8 +514,6 @@ export default function TotalExerciseScreen({ navigation }) {
         squat: { count: todaySquatReps, time: todaySquatReps * 5 },
       }
     }));
-
-
 
     const setTodayTime = async () => {
       const checkInTimeStr = await AsyncStorage.getItem('checkInTime');
@@ -372,9 +528,7 @@ export default function TotalExerciseScreen({ navigation }) {
       }
     };
     setTodayTime();
-
-
-  }, [user.id, todayBenchReps, todayDeadliftReps, todaySquatReps]);
+  }, [user?.id, todayBenchReps, todayDeadliftReps, todaySquatReps]);
 
 
 
@@ -416,7 +570,7 @@ export default function TotalExerciseScreen({ navigation }) {
 
   useEffect(() => {
     const fetchCustomKcal = async () => {
-      if (period !== 'custom' || !startDate || !endDate) return;
+      if (period !== 'custom' || !startDate || !endDate || !user?.id) return;
       try {
         console.log('🔥 fetchCustomKcal 시작 - userId:', user.id, '기간:', startDate, '~', endDate);
         const types = ['bench', 'squat', 'deadlift'];
@@ -441,7 +595,34 @@ export default function TotalExerciseScreen({ navigation }) {
       }
     };
     fetchCustomKcal();
-  }, [period, startDate, endDate, user.id]);
+  }, [period, startDate, endDate, user?.id]);
+
+  // 직접입력 기간이 변경될 때 운동 횟수와 칼로리 다시 가져오기
+  useEffect(() => {
+    if (period === 'custom' && user?.id) {
+      const startDate = `${startYear}-${startMonth.padStart(2, '0')}-${startDay.padStart(2, '0')}`;
+      const endDate = `${endYear}-${endMonth.padStart(2, '0')}-${endDay.padStart(2, '0')}`;
+      setStartDate(startDate);
+      setEndDate(endDate);
+      // custom 기간의 운동 횟수와 칼로리 가져오기
+      fetchCustomReps();
+      fetchCustomKcal();
+    }
+  }, [startYear, startMonth, startDay, endYear, endMonth, endDay, user?.id, period]);
+
+  // 하드웨어 백 버튼 핸들러
+  useFocusEffect(
+    React.useCallback(() => {
+      const onBackPress = () => {
+        // Profile 화면으로 이동
+        navigation.navigate('Profile');
+        return true; // 기본 백 동작 방지
+      };
+
+      const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => backHandler.remove();
+    }, [navigation])
+  );
 
   // custom 기간의 운동 데이터 불러오기
   const loadCustomExerciseData = async () => {
@@ -490,6 +671,22 @@ export default function TotalExerciseScreen({ navigation }) {
     }
   };
 
+  // 로딩 중이거나 사용자 정보가 없을 때
+  if (isLoading || !user) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={gymTheme.colors.primary} />
+        <CommonHeader 
+          navigation={navigation}
+          title="운동 기록 분석"
+        />
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>로딩 중...</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={gymTheme.colors.primary} />
@@ -498,8 +695,6 @@ export default function TotalExerciseScreen({ navigation }) {
       <CommonHeader 
         navigation={navigation}
         title="운동 기록 분석"
-        showBackButton={true}
-        onBackPress={() => navigation.goBack()}
       />
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
@@ -564,42 +759,108 @@ export default function TotalExerciseScreen({ navigation }) {
               <Text style={styles.dateLabel}>시작일</Text>
               <View style={styles.datePickers}>
                 <View style={styles.pickerGroup}>
-                  <Picker 
-                    selectedValue={startYear} 
-                    style={styles.datePicker} 
-                    itemStyle={{ color: gymTheme.colors.text }} 
-                    onValueChange={setStartYear}
-                  >
-                    {Array.from({ length: 10 }, (_, i) => String(today.getFullYear() - 5 + i)).map(y => (
-                      <Picker.Item key={y} label={y} value={y} color={gymTheme.colors.text} />
-                    ))}
-                  </Picker>
+                  <View style={styles.pickerContainer}>
+                    <Text style={styles.selectedValue}>{startYear}</Text>
+                                        <Picker 
+                      selectedValue={startYear} 
+                      mode="dropdown"
+                      style={[styles.datePicker, { 
+                      color: 'transparent', 
+                      backgroundColor: 'transparent',
+                      fontSize: 18,
+                      fontWeight: '900',
+                      textAlign: 'center',
+                      includeFontPadding: false,
+                      textAlignVertical: 'center',
+                      borderWidth: 2,
+                      borderColor: '#000000',
+                      borderRadius: 8
+                    }]}
+                    itemStyle={{ 
+                      color: '#000000', 
+                      backgroundColor: '#ffffff',
+                      fontSize: 18,
+                      fontWeight: '900',
+                      textAlign: 'center',
+                      height: 50
+                    }}
+                      onValueChange={setStartYear}
+                    >
+                      {Array.from({ length: 10 }, (_, i) => String(today.getFullYear() - 5 + i)).map(y => (
+                        <Picker.Item key={y} label={y} value={y} color="#000000" style={{color: '#000000', fontSize: 18, fontWeight: '900', backgroundColor: '#ffffff'}} />
+                      ))}
+                    </Picker>
+                  </View>
                   <Text style={styles.pickerLabel}>년</Text>
                 </View>
                 <View style={styles.pickerGroup}>
-                  <Picker 
-                    selectedValue={startMonth} 
-                    style={styles.datePicker} 
-                    itemStyle={{ color: gymTheme.colors.text }} 
-                    onValueChange={setStartMonth}
-                  >
-                    {Array.from({ length: 12 }, (_, i) => String(i + 1)).map(m => (
-                      <Picker.Item key={m} label={m} value={m} color={gymTheme.colors.text} />
-                    ))}
-                  </Picker>
+                  <View style={styles.pickerContainer}>
+                    <Text style={styles.selectedValue}>{startMonth}</Text>
+                    <Picker 
+                      selectedValue={startMonth} 
+                      mode="dropdown"
+                      style={[styles.datePicker, { 
+                      color: 'transparent', 
+                      backgroundColor: 'transparent',
+                      fontSize: 18,
+                      fontWeight: '900',
+                      textAlign: 'center',
+                      includeFontPadding: false,
+                      textAlignVertical: 'center',
+                      borderWidth: 2,
+                      borderColor: '#000000',
+                      borderRadius: 8
+                    }]}
+                    itemStyle={{ 
+                      color: '#000000', 
+                      backgroundColor: '#ffffff',
+                      fontSize: 18,
+                      fontWeight: '900',
+                      textAlign: 'center',
+                      height: 50
+                    }}
+                      onValueChange={setStartMonth}
+                    >
+                      {Array.from({ length: 12 }, (_, i) => String(i + 1)).map(m => (
+                        <Picker.Item key={m} label={m} value={m} color="#000000" style={{color: '#000000', fontSize: 18, fontWeight: '900', backgroundColor: '#ffffff'}} />
+                      ))}
+                    </Picker>
+                  </View>
                   <Text style={styles.pickerLabel}>월</Text>
                 </View>
                 <View style={styles.pickerGroup}>
-                  <Picker 
-                    selectedValue={startDay} 
-                    style={styles.datePicker} 
-                    itemStyle={{ color: gymTheme.colors.text }} 
-                    onValueChange={setStartDay}
-                  >
-                    {Array.from({ length: 31 }, (_, i) => String(i + 1)).map(d => (
-                      <Picker.Item key={d} label={d} value={d} color={gymTheme.colors.text} />
-                    ))}
-                  </Picker>
+                  <View style={styles.pickerContainer}>
+                    <Text style={styles.selectedValue}>{startDay}</Text>
+                    <Picker 
+                      selectedValue={startDay} 
+                      mode="dropdown"
+                      style={[styles.datePicker, { 
+                      color: 'transparent', 
+                      backgroundColor: 'transparent',
+                      fontSize: 18,
+                      fontWeight: '900',
+                      textAlign: 'center',
+                      includeFontPadding: false,
+                      textAlignVertical: 'center',
+                      borderWidth: 2,
+                      borderColor: '#000000',
+                      borderRadius: 8
+                    }]}
+                    itemStyle={{ 
+                      color: '#000000', 
+                      backgroundColor: '#ffffff',
+                      fontSize: 18,
+                      fontWeight: '900',
+                      textAlign: 'center',
+                      height: 50
+                    }}
+                      onValueChange={setStartDay}
+                    >
+                      {Array.from({ length: 31 }, (_, i) => String(i + 1)).map(d => (
+                        <Picker.Item key={d} label={d} value={d} color="#000000" style={{color: '#000000', fontSize: 18, fontWeight: '900', backgroundColor: '#ffffff'}} />
+                      ))}
+                    </Picker>
+                  </View>
                   <Text style={styles.pickerLabel}>일</Text>
                 </View>
               </View>
@@ -609,42 +870,108 @@ export default function TotalExerciseScreen({ navigation }) {
               <Text style={styles.dateLabel}>종료일</Text>
               <View style={styles.datePickers}>
                 <View style={styles.pickerGroup}>
-                  <Picker 
-                    selectedValue={endYear} 
-                    style={styles.datePicker} 
-                    itemStyle={{ color: gymTheme.colors.text }} 
-                    onValueChange={setEndYear}
-                  >
-                    {Array.from({ length: 10 }, (_, i) => String(today.getFullYear() - 5 + i)).map(y => (
-                      <Picker.Item key={y} label={y} value={y} color={gymTheme.colors.text} />
-                    ))}
-                  </Picker>
+                  <View style={styles.pickerContainer}>
+                    <Text style={styles.selectedValue}>{endYear}</Text>
+                    <Picker 
+                      selectedValue={endYear} 
+                      mode="dropdown"
+                      style={[styles.datePicker, { 
+                      color: 'transparent', 
+                      backgroundColor: 'transparent',
+                      fontSize: 18,
+                      fontWeight: '900',
+                      textAlign: 'center',
+                      includeFontPadding: false,
+                      textAlignVertical: 'center',
+                      borderWidth: 2,
+                      borderColor: '#000000',
+                      borderRadius: 8
+                    }]}
+                    itemStyle={{ 
+                      color: '#000000', 
+                      backgroundColor: '#ffffff',
+                      fontSize: 18,
+                      fontWeight: '900',
+                      textAlign: 'center',
+                      height: 50
+                    }}
+                      onValueChange={setEndYear}
+                    >
+                      {Array.from({ length: 10 }, (_, i) => String(today.getFullYear() - 5 + i)).map(y => (
+                        <Picker.Item key={y} label={y} value={y} color="#000000" style={{color: '#000000', fontSize: 18, fontWeight: '900', backgroundColor: '#ffffff'}} />
+                      ))}
+                    </Picker>
+                  </View>
                   <Text style={styles.pickerLabel}>년</Text>
                 </View>
                 <View style={styles.pickerGroup}>
-                  <Picker 
-                    selectedValue={endMonth} 
-                    style={styles.datePicker} 
-                    itemStyle={{ color: gymTheme.colors.text }} 
-                    onValueChange={setEndMonth}
-                  >
-                    {Array.from({ length: 12 }, (_, i) => String(i + 1)).map(m => (
-                      <Picker.Item key={m} label={m} value={m} color={gymTheme.colors.text} />
-                    ))}
-                  </Picker>
+                  <View style={styles.pickerContainer}>
+                    <Text style={styles.selectedValue}>{endMonth}</Text>
+                    <Picker 
+                      selectedValue={endMonth} 
+                      mode="dropdown"
+                      style={[styles.datePicker, { 
+                      color: 'transparent', 
+                      backgroundColor: 'transparent',
+                      fontSize: 18,
+                      fontWeight: '900',
+                      textAlign: 'center',
+                      includeFontPadding: false,
+                      textAlignVertical: 'center',
+                      borderWidth: 2,
+                      borderColor: '#000000',
+                      borderRadius: 8
+                    }]}
+                    itemStyle={{ 
+                      color: '#000000', 
+                      backgroundColor: '#ffffff',
+                      fontSize: 18,
+                      fontWeight: '900',
+                      textAlign: 'center',
+                      height: 50
+                    }}
+                      onValueChange={setEndMonth}
+                    >
+                      {Array.from({ length: 12 }, (_, i) => String(i + 1)).map(m => (
+                        <Picker.Item key={m} label={m} value={m} color="#000000" style={{color: '#000000', fontSize: 18, fontWeight: '900', backgroundColor: '#ffffff'}} />
+                      ))}
+                    </Picker>
+                  </View>
                   <Text style={styles.pickerLabel}>월</Text>
                 </View>
                 <View style={styles.pickerGroup}>
-                  <Picker 
-                    selectedValue={endDay} 
-                    style={styles.datePicker} 
-                    itemStyle={{ color: gymTheme.colors.text }} 
-                    onValueChange={setEndDay}
-                  >
-                    {Array.from({ length: 31 }, (_, i) => String(i + 1)).map(d => (
-                      <Picker.Item key={d} label={d} value={d} color={gymTheme.colors.text} />
-                    ))}
-                  </Picker>
+                  <View style={styles.pickerContainer}>
+                    <Text style={styles.selectedValue}>{endDay}</Text>
+                    <Picker 
+                      selectedValue={endDay} 
+                      mode="dropdown"
+                      style={[styles.datePicker, { 
+                      color: 'transparent', 
+                      backgroundColor: 'transparent',
+                      fontSize: 18,
+                      fontWeight: '900',
+                      textAlign: 'center',
+                      includeFontPadding: false,
+                      textAlignVertical: 'center',
+                      borderWidth: 2,
+                      borderColor: '#000000',
+                      borderRadius: 8
+                    }]}
+                    itemStyle={{ 
+                      color: '#000000', 
+                      backgroundColor: '#ffffff',
+                      fontSize: 18,
+                      fontWeight: '900',
+                      textAlign: 'center',
+                      height: 50
+                    }}
+                      onValueChange={setEndDay}
+                    >
+                      {Array.from({ length: 31 }, (_, i) => String(i + 1)).map(d => (
+                        <Picker.Item key={d} label={d} value={d} color="#000000" style={{color: '#000000', fontSize: 18, fontWeight: '900', backgroundColor: '#ffffff'}} />
+                      ))}
+                    </Picker>
+                  </View>
                   <Text style={styles.pickerLabel}>일</Text>
                 </View>
               </View>
@@ -671,20 +998,27 @@ export default function TotalExerciseScreen({ navigation }) {
         {/* 선택된 기간 운동 요약 */}
         <View style={styles.summaryCard}>
           <Text style={styles.summaryCardTitle}>
-            {period === 'day' ? '오늘의' : period === 'week' ? '주간' : period === 'month' ? '이번달' : '선택기간'} 운동 요약
+            {period === 'day' ? '오늘의' : period === 'week' ? '주간' : period === 'month' ? '이번달' : '선택기간'} 운동 요약 {getDateRangeText(period)}
+            {loading && <Text style={styles.loadingText}> (로딩 중...)</Text>}
           </Text>
           <View style={styles.summaryItems}>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryItemIcon}>🏋️</Text>
-              <Text style={styles.summaryItemText}>벤치프레스: {exerciseDataMap[period]?.bench?.count || 0}회</Text>
+              <Text style={styles.summaryItemText}>
+                벤치프레스: {loading ? '...' : (exerciseDataMap[period]?.bench?.count || 0)}회
+              </Text>
             </View>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryItemIcon}>🦵</Text>
-              <Text style={styles.summaryItemText}>스쿼트: {exerciseDataMap[period]?.squat?.count || 0}회</Text>
+              <Text style={styles.summaryItemText}>
+                스쿼트: {loading ? '...' : (exerciseDataMap[period]?.squat?.count || 0)}회
+              </Text>
             </View>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryItemIcon}>💪</Text>
-              <Text style={styles.summaryItemText}>데드리프트: {exerciseDataMap[period]?.deadlift?.count || 0}회</Text>
+              <Text style={styles.summaryItemText}>
+                데드리프트: {loading ? '...' : (exerciseDataMap[period]?.deadlift?.count || 0)}회
+              </Text>
             </View>
           </View>
         </View>
@@ -693,7 +1027,7 @@ export default function TotalExerciseScreen({ navigation }) {
         <SimpleBarChart 
           data={timeDataAll} 
           labels={timeLabelsAll} 
-          title={`운동 시간 (${period === 'day' ? '오늘' : period === 'week' ? '주간' : period === 'month' ? '이번달' : '선택기간'} / 분)`} 
+          title={`운동 시간 (${period === 'day' ? '오늘' : period === 'week' ? '주간' : period === 'month' ? '이번달' : '선택기간'} ${getDateRangeText(period)} / 분)`} 
           maxValue={Math.max(...timeDataAll) || 1} 
         />
 
@@ -701,7 +1035,7 @@ export default function TotalExerciseScreen({ navigation }) {
         <SimpleBarChart 
           data={exerciseDataAll} 
           labels={exerciseLabels} 
-          title={`운동별 총 횟수 (${period === 'day' ? '오늘' : period === 'week' ? '주간' : period === 'month' ? '이번달' : '선택기간'})`} 
+          title={`운동별 총 횟수 (${period === 'day' ? '오늘' : period === 'week' ? '주간' : period === 'month' ? '이번달' : '선택기간'} ${getDateRangeText(period)})`} 
           maxValue={Math.max(...exerciseDataAll) || 1} 
         />
 
@@ -709,12 +1043,9 @@ export default function TotalExerciseScreen({ navigation }) {
         {(period === 'day' || period === 'week' || period === 'month' || period === 'custom') && (
           <View style={styles.calorieCard}>
             <Text style={styles.calorieCardTitle}>
-              운동별 칼로리 ({period === 'day' ? '오늘' : period === 'week' ? '주간' : period === 'month' ? '이번달' : '선택기간'})
+              운동별 칼로리 ({period === 'day' ? '오늘' : period === 'week' ? '주간' : period === 'month' ? '이번달' : '선택기간'} {getDateRangeText(period)})
             </Text>
-            {/* 디버깅을 위한 state 값 출력 */}
-            <Text style={styles.debugText}>
-              🔍 Debug - period: {period}, todayKcal: {JSON.stringify(todayKcal)}, weekKcal: {JSON.stringify(weekKcal)}, monthKcal: {JSON.stringify(monthKcal)}, customKcal: {JSON.stringify(customKcal)}
-            </Text>
+
             {exerciseKeys.map((key, idx) => {
               let kcalData;
               if (period === 'day') {
@@ -846,9 +1177,47 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   
+  pickerContainer: {
+    position: 'relative',
+    alignItems: 'center',
+  },
+  
+  selectedValue: {
+    position: 'absolute',
+    top: 8,
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#000000',
+    zIndex: 100,
+    backgroundColor: '#ffffff',
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#000000',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  
   datePicker: {
-    width: 80,
-    height: 44,
+    width: 70,
+    height: 40,
+    backgroundColor: 'transparent',
+    color: 'transparent',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    borderWidth: 2,
+    borderColor: '#000000',
+    borderRadius: 6,
+    includeFontPadding: false,
   },
   
   pickerLabel: {
@@ -1086,5 +1455,18 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderRadius: 4,
     fontFamily: 'monospace',
+  },
+  
+  loadingText: {
+    fontSize: 12,
+    color: gymTheme.colors.accent,
+    fontStyle: 'italic',
+  },
+  
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: gymTheme.colors.primary,
   },
 });

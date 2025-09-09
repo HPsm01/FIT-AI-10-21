@@ -34,6 +34,17 @@ const CheckInScreen = ({ navigation }) => {
     }
     
     const checkAlreadyCheckedIn = async () => {
+      try {
+        // 이전 checkInTime이 남아있다면 정리
+        const existingCheckInTime = await AsyncStorage.getItem('checkInTime');
+        if (existingCheckInTime) {
+          console.log('이전 checkInTime 정리:', existingCheckInTime);
+          await AsyncStorage.removeItem('checkInTime');
+        }
+      } catch (error) {
+        console.error('checkInTime 정리 중 오류:', error);
+      }
+      
       // 로그인 후에는 항상 입실 화면을 보여주기 위해 자동 이동 로직 제거
       setLoading(false);
     };
@@ -68,10 +79,58 @@ const CheckInScreen = ({ navigation }) => {
       
       if (!response.ok) {
         const text = await response.text();
+        
+        // ✅ "이미 입실 상태" 오류 시 자동 퇴실 수행
+        if (text.includes('이미 입실 상태입니다')) {
+          console.log('자동 퇴실 수행 중...');
+          
+          try {
+            // 자동 퇴실 API 호출
+            const checkoutResponse = await fetch(`${API_URL}/visits/checkout`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                user_id: user.id,
+                check_out: new Date().toISOString(),
+              }),
+            });
+            
+            if (checkoutResponse.ok) {
+              console.log('자동 퇴실 완료, 다시 입실 시도');
+              
+              // 퇴실 완료 후 다시 입실 시도
+              const retryResponse = await fetch(`${API_URL}/visits/checkin`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  user_id: user.id,
+                  check_in: currentTime,
+                }),
+              });
+              
+              if (retryResponse.ok) {
+                await AsyncStorage.setItem('checkInTime', currentTime);
+                console.log('자동 퇴실 후 입실 완료 - checkInTime 저장:', currentTime);
+                alert(`자동 퇴실 후 입실 완료\n입실 시간: ${new Date(currentTime).toLocaleString()}`);
+                navigation.navigate('CheckOut');
+                return;
+              } else {
+                throw new Error('재입실 시도 실패');
+              }
+            } else {
+              throw new Error('자동 퇴실 실패');
+            }
+          } catch (autoCheckoutError) {
+            console.error('자동 퇴실 중 오류:', autoCheckoutError);
+            throw new Error('자동 퇴실 처리 중 오류가 발생했습니다.');
+          }
+        }
+        
         throw new Error(text || '서버로 입실 정보 전송 실패');
       }
       
       await AsyncStorage.setItem('checkInTime', currentTime);
+      console.log('입실 완료 - checkInTime 저장:', currentTime);
       alert(`입실 완료\n입실 시간: ${new Date(currentTime).toLocaleString()}`);
       navigation.navigate('CheckOut');
     } catch (error) {
@@ -104,7 +163,6 @@ const CheckInScreen = ({ navigation }) => {
       <CommonHeader 
         navigation={navigation}
         title="운동 시작하기"
-        showBackButton={false}
       />
 
       {/* 메인 콘텐츠 */}

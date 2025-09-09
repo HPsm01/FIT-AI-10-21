@@ -146,4 +146,22 @@ export const gymStyles = {
     color: gymTheme.colors.text,
     fontSize: 16,
   },
+  
+  // Picker 전용 스타일 - 텍스트 가시성 보장
+  picker: {
+    backgroundColor: '#ffffff',
+    color: '#000000',
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    // Android에서 강제 적용
+    textAlignVertical: 'center',
+  },
+  
+  pickerItem: {
+    color: '#000000',
+    backgroundColor: '#ffffff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
 }; 

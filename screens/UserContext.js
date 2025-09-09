@@ -12,11 +12,80 @@ export const UserProvider = ({ children }) => {
   const [initialRoute, setInitialRoute] = useState('Login');
   const appState = useRef(AppState.currentState);
   const isExiting = useRef(false);
+  
+  // 타이머 관련 상태
+  const [elapsed, setElapsed] = useState('00:00:00');
+  const [isWorkingOut, setIsWorkingOut] = useState(false);
 
   // 앱 시작 시 저장된 로그인 정보 불러오기
   useEffect(() => {
     loadUserFromStorage();
   }, []);
+
+  // 타이머 로직
+  useEffect(() => {
+    if (!user) return;
+
+    const checkWorkoutStatus = async () => {
+      try {
+        const checkInTime = await AsyncStorage.getItem('checkInTime');
+        if (checkInTime) {
+          setIsWorkingOut(true);
+          console.log('운동 중 - 타이머 시작');
+        } else {
+          setIsWorkingOut(false);
+          setElapsed('00:00:00');
+          console.log('운동 중 아님 - 타이머 정지');
+        }
+      } catch (error) {
+        console.error('운동 상태 확인 실패:', error);
+      }
+    };
+
+    checkWorkoutStatus();
+  }, [user]);
+
+  useEffect(() => {
+    if (!isWorkingOut) {
+      setElapsed('00:00:00');
+      return;
+    }
+
+    const timer = setInterval(async () => {
+      try {
+        const checkInTimeStr = await AsyncStorage.getItem('checkInTime');
+        if (checkInTimeStr) {
+          const checkInTime = new Date(checkInTimeStr);
+          const now = new Date();
+          const diff = now - checkInTime;
+          
+          if (diff < 0) {
+            setElapsed('00:00:00');
+            return;
+          }
+
+          const hours = Math.floor(diff / 3600000);
+          const minutes = Math.floor((diff % 3600000) / 60000);
+          const seconds = Math.floor((diff % 60000) / 1000);
+          
+          const h = String(hours).padStart(2, '0');
+          const m = String(minutes).padStart(2, '0');
+          const s = String(seconds).padStart(2, '0');
+          
+          setElapsed(`${h}:${m}:${s}`);
+        } else {
+          setIsWorkingOut(false);
+          setElapsed('00:00:00');
+        }
+      } catch (error) {
+        console.error('타이머 업데이트 실패:', error);
+      }
+    }, 1000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [isWorkingOut]);
 
   // AsyncStorage에서 사용자 정보와 입실 상태 불러오기
   const loadUserFromStorage = async () => {
@@ -78,6 +147,8 @@ export const UserProvider = ({ children }) => {
   const logoutUser = async () => {
     setUser(null);
     await removeUserFromStorage();
+    setInitialRoute('Login'); // 로그아웃 시 로그인 화면으로 이동
+    console.log('로그아웃 완료 - 로그인 화면으로 이동');
   };
 
   // 앱 상태 변경 감지 및 퇴실 처리
@@ -85,6 +156,7 @@ export const UserProvider = ({ children }) => {
     if (!user) return;
 
     let activityTimer;
+    let backgroundTimer;
     
     const resetActivityTimer = () => {
       if (activityTimer) {
@@ -106,43 +178,54 @@ export const UserProvider = ({ children }) => {
         console.log('앱 활성화 - 활동 타이머 리셋');
         resetActivityTimer();
         isExiting.current = false;
+        
+        // 백그라운드 타이머가 있다면 취소
+        if (backgroundTimer) {
+          clearTimeout(backgroundTimer);
+          backgroundTimer = null;
+        }
       } else if (nextAppState === 'background' || nextAppState === 'inactive') {
         // 앱이 백그라운드로 가거나 비활성화될 때
         if (!isExiting.current) {
           isExiting.current = true;
-          console.log('앱 백그라운드/비활성화 - 퇴실 처리 시작');
+          console.log('앱 백그라운드/비활성화 - 5분 후 자동 퇴실 예약');
           
-          try {
-            // 입실 상태 확인
-            const checkInTime = await AsyncStorage.getItem('checkInTime');
-            if (checkInTime) {
-              console.log('입실 중 - 자동 퇴실 처리');
-              
-              // 퇴실 API 호출
-              const payload = {
-                user_id: user.id,
-                check_out: new Date().toISOString(),
-              };
-              
-              const response = await fetch('http://13.209.67.129:8000/visits/checkout', {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-              });
-              
-              if (response.ok) {
-                // 퇴실 성공 시 checkInTime 제거
-                await AsyncStorage.removeItem('checkInTime');
-                console.log('자동 퇴실 처리 완료');
+          // 5분 후 자동 퇴실 처리 (즉시 퇴실하지 않음)
+          backgroundTimer = setTimeout(async () => {
+            try {
+              // 입실 상태 확인
+              const checkInTime = await AsyncStorage.getItem('checkInTime');
+              if (checkInTime) {
+                console.log('5분 경과 - 자동 퇴실 처리');
+                
+                // 퇴실 API 호출
+                const payload = {
+                  user_id: user.id,
+                  check_out: new Date().toISOString(),
+                };
+                
+                const response = await fetch('http://13.209.67.129:8000/visits/checkout', {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                });
+                
+                if (response.ok) {
+                  // 퇴실 성공 시 checkInTime 제거
+                  await AsyncStorage.removeItem('checkInTime');
+                  console.log('자동 퇴실 처리 완료');
+                  // 퇴실 후 로그인 화면으로 이동
+                  setInitialRoute('Login');
+                } else {
+                  console.log('자동 퇴실 API 호출 실패');
+                }
               } else {
-                console.log('자동 퇴실 API 호출 실패');
+                console.log('입실하지 않은 상태 - 퇴실 처리 불필요');
               }
-            } else {
-              console.log('입실하지 않은 상태 - 퇴실 처리 불필요');
+            } catch (error) {
+              console.error('자동 퇴실 처리 중 오류:', error);
             }
-          } catch (error) {
-            console.error('자동 퇴실 처리 중 오류:', error);
-          }
+          }, 5 * 60 * 1000); // 5분 후
         }
       }
     };
@@ -168,6 +251,9 @@ export const UserProvider = ({ children }) => {
       if (activityTimer) {
         clearTimeout(activityTimer);
       }
+      if (backgroundTimer) {
+        clearTimeout(backgroundTimer);
+      }
       subscription?.remove();
     };
   }, [user]);
@@ -179,7 +265,9 @@ export const UserProvider = ({ children }) => {
       loginUser, 
       logoutUser, 
       isLoading,
-      initialRoute
+      initialRoute,
+      elapsed,
+      isWorkingOut
     }}>
       {children}
     </UserContext.Provider>

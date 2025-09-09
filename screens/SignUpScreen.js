@@ -151,13 +151,23 @@ const SighUpScreen = ({ navigation }) => {
                 <View style={styles.pickerWrapper}>
                   <Picker
                     selectedValue={year}
-                    style={styles.picker}
+                    style={[styles.picker, { 
+                      color: '#000000', 
+                      backgroundColor: '#ffffff',
+                      fontSize: 16,
+                      fontWeight: 'bold'
+                    }]}
                     onValueChange={(value) => setYear(value)}
-                    itemStyle={{ color: gymTheme.colors.text }}
+                    itemStyle={{ 
+                      color: '#000000', 
+                      backgroundColor: '#ffffff',
+                      fontSize: 16,
+                      fontWeight: 'bold'
+                    }}
                   >
                     {Array.from({ length: 2025 - 1960 + 1 }, (_, i) => {
                       const y = 1960 + i;
-                      return <Picker.Item key={y} label={String(y)} value={String(y)} color={gymTheme.colors.text} />;
+                      return <Picker.Item key={y} label={String(y)} value={String(y)} color="#000000" style={{color: '#000000', fontSize: 16, fontWeight: 'bold'}} />;
                     })}
                   </Picker>
                 </View>
@@ -168,13 +178,23 @@ const SighUpScreen = ({ navigation }) => {
                 <View style={styles.pickerWrapper}>
                   <Picker
                     selectedValue={month}
-                    style={styles.picker}
+                    style={[styles.picker, { 
+                      color: '#000000', 
+                      backgroundColor: '#ffffff',
+                      fontSize: 16,
+                      fontWeight: 'bold'
+                    }]}
                     onValueChange={(value) => setMonth(value)}
-                    itemStyle={{ color: gymTheme.colors.text }}
+                    itemStyle={{ 
+                      color: '#000000', 
+                      backgroundColor: '#ffffff',
+                      fontSize: 16,
+                      fontWeight: 'bold'
+                    }}
                   >
                     {Array.from({ length: 12 }, (_, i) => {
                       const m = i + 1;
-                      return <Picker.Item key={m} label={String(m)} value={String(m)} color={gymTheme.colors.text} />;
+                      return <Picker.Item key={m} label={String(m)} value={String(m)} color="#000000" style={{color: '#000000', fontSize: 16, fontWeight: 'bold'}} />;
                     })}
                   </Picker>
                 </View>
@@ -185,13 +205,23 @@ const SighUpScreen = ({ navigation }) => {
                 <View style={styles.pickerWrapper}>
                   <Picker
                     selectedValue={day}
-                    style={styles.picker}
+                    style={[styles.picker, { 
+                      color: '#000000', 
+                      backgroundColor: '#ffffff',
+                      fontSize: 16,
+                      fontWeight: 'bold'
+                    }]}
                     onValueChange={(value) => setDay(value)}
-                    itemStyle={{ color: gymTheme.colors.text }}
+                    itemStyle={{ 
+                      color: '#000000', 
+                      backgroundColor: '#ffffff',
+                      fontSize: 16,
+                      fontWeight: 'bold'
+                    }}
                   >
                     {Array.from({ length: 31 }, (_, i) => {
                       const d = i + 1;
-                      return <Picker.Item key={d} label={String(d)} value={String(d)} color={gymTheme.colors.text} />;
+                      return <Picker.Item key={d} label={String(d)} value={String(d)} color="#000000" style={{color: '#000000', fontSize: 16, fontWeight: 'bold'}} />;
                     })}
                   </Picker>
                 </View>
@@ -205,12 +235,22 @@ const SighUpScreen = ({ navigation }) => {
             <View style={styles.pickerWrapper}>
               <Picker
                 selectedValue={gender}
-                style={styles.picker}
+                style={[styles.picker, { 
+                  color: '#000000', 
+                  backgroundColor: '#ffffff',
+                  fontSize: 16,
+                  fontWeight: 'bold'
+                }]}
                 onValueChange={(value) => setGender(value)}
-                itemStyle={{ color: gymTheme.colors.text }}
+                itemStyle={{ 
+                  color: '#000000', 
+                  backgroundColor: '#ffffff',
+                  fontSize: 16,
+                  fontWeight: 'bold'
+                }}
               >
-                <Picker.Item label="남성" value="male" color={gymTheme.colors.text} />
-                <Picker.Item label="여성" value="female" color={gymTheme.colors.text} />
+                <Picker.Item label="남성" value="male" color="#000000" style={{color: '#000000', fontSize: 16, fontWeight: 'bold'}} />
+                <Picker.Item label="여성" value="female" color="#000000" style={{color: '#000000', fontSize: 16, fontWeight: 'bold'}} />
               </Picker>
             </View>
           </View>
@@ -349,7 +389,11 @@ const styles = StyleSheet.create({
   },
   
   picker: {
-    color: gymTheme.colors.text,
+    color: '#000000',
+    backgroundColor: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    height: 40,
   },
   
   signUpButton: {

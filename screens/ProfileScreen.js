@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState, useLayoutEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, BackHandler } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { UserContext } from "./UserContext";
 import PropTypes from 'prop-types';
@@ -10,7 +10,7 @@ import { gymTheme, gymStyles } from '../styles/theme';
 import CommonHeader from './CommonHeader';
 
 export default function ProfileScreen({ navigation }) {
-  const { user, setUser } = useContext(UserContext);
+  const { user, setUser, elapsed, isWorkingOut } = useContext(UserContext);
 
   const userInfo = user || {
     name: "이름 없음",
@@ -40,6 +40,35 @@ export default function ProfileScreen({ navigation }) {
     }, [user?.id])
   );
 
+
+  // 하드웨어 백 버튼 핸들러
+  useFocusEffect(
+    React.useCallback(() => {
+      const onBackPress = async () => {
+        // 입실 상태 확인 후 적절한 화면으로 이동
+        try {
+          const localCheckInTime = await AsyncStorage.getItem('checkInTime');
+          
+          if (localCheckInTime) {
+            // 입실 기록이 있으면 CheckOut 화면으로 이동
+            navigation.navigate('CheckOut');
+          } else {
+            // 입실 기록이 없으면 CheckIn 화면으로 이동
+            navigation.navigate('CheckIn');
+          }
+        } catch (error) {
+          console.error('입실 상태 확인 중 오류:', error);
+          navigation.navigate('CheckIn');
+        }
+        return true; // 기본 백 동작 방지
+      };
+
+      const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => backHandler.remove();
+    }, [navigation])
+  );
+
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={gymTheme.colors.primary} />
@@ -48,8 +77,6 @@ export default function ProfileScreen({ navigation }) {
       <CommonHeader 
         navigation={navigation}
         title="내 프로필"
-        showBackButton={true}
-        onBackPress={() => navigation.goBack()}
       />
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
@@ -87,7 +114,24 @@ export default function ProfileScreen({ navigation }) {
         <View style={styles.actionSection}>
           <TouchableOpacity
             style={styles.actionCard}
-            onPress={() => navigation.navigate('TotalExercise')}
+            onPress={async () => {
+              try {
+                const localCheckInTime = await AsyncStorage.getItem('checkInTime');
+                if (localCheckInTime) {
+                  navigation.navigate('TotalExercise');
+                } else {
+                  Alert.alert('알림', '입실 후 운동 기록을 확인할 수 있습니다.', [
+                    {
+                      text: '확인',
+                      onPress: () => navigation.navigate('CheckIn'),
+                    },
+                  ]);
+                }
+              } catch (error) {
+                console.error('입실 상태 확인 중 오류:', error);
+                navigation.navigate('CheckIn');
+              }
+            }}
           >
             <View style={styles.actionContent}>
               <Text style={styles.actionIcon}>📊</Text>
@@ -261,4 +305,5 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: gymTheme.colors.text,
   },
+
 });

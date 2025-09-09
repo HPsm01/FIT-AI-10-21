@@ -5,7 +5,7 @@ import { UserContext } from './UserContext';
 import { gymTheme } from '../styles/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const CommonHeader = ({ navigation, title, showBackButton = false, onBackPress }) => {
+const CommonHeader = ({ navigation, title }) => {
   const { user, logoutUser } = useContext(UserContext);
   const [elapsed, setElapsed] = useState('00:00:00');
   const [isWorkingOut, setIsWorkingOut] = useState(false);
@@ -115,8 +115,24 @@ const CommonHeader = ({ navigation, title, showBackButton = false, onBackPress }
                 // 퇴실 실패해도 로그아웃은 진행
               }
               
-              // 로그아웃 처리
-              await logoutUser();
+                             // 사용자 정보 먼저 정리 (운동 기록은 유지)
+               try {
+                 const keys = await AsyncStorage.getAllKeys();
+                 const userDataKeys = keys.filter(key => 
+                   key === 'checkInTime' ||
+                   key === 'userData'
+                 );
+                 if (userDataKeys.length > 0) {
+                   await AsyncStorage.multiRemove(userDataKeys);
+                   console.log('사용자 정보 정리 완료:', userDataKeys);
+                 }
+               } catch (error) {
+                 console.error('데이터 정리 중 오류:', error);
+               }
+               
+               // 로그아웃 처리
+               await logoutUser();
+              
               navigation.reset({
                 index: 0,
                 routes: [{ name: 'Login' }],
@@ -135,13 +151,29 @@ const CommonHeader = ({ navigation, title, showBackButton = false, onBackPress }
           { 
             text: '로그아웃', 
             style: 'destructive',
-            onPress: async () => {
-              await logoutUser();
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Login' }],
-              });
-            }
+                         onPress: async () => {
+               // 사용자 정보 먼저 정리 (운동 기록은 유지)
+               try {
+                 const keys = await AsyncStorage.getAllKeys();
+                 const userDataKeys = keys.filter(key => 
+                   key === 'checkInTime' ||
+                   key === 'userData'
+                 );
+                 if (userDataKeys.length > 0) {
+                   await AsyncStorage.multiRemove(userDataKeys);
+                   console.log('사용자 정보 정리 완료:', userDataKeys);
+                 }
+               } catch (error) {
+                 console.error('데이터 정리 중 오류:', error);
+               }
+               
+               await logoutUser();
+               
+               navigation.reset({
+                 index: 0,
+                 routes: [{ name: 'Login' }],
+               });
+             }
           },
         ]
       );
@@ -153,14 +185,6 @@ const CommonHeader = ({ navigation, title, showBackButton = false, onBackPress }
   return (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
-        {showBackButton && (
-          <TouchableOpacity 
-            style={styles.backButton} 
-            onPress={onBackPress}
-          >
-            <Text style={styles.backButtonText}>←</Text>
-          </TouchableOpacity>
-        )}
         <Text style={styles.headerTitle}>{title}</Text>
       </View>
       
@@ -199,16 +223,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   
-  backButton: {
-    marginRight: gymTheme.spacing.sm,
-    padding: 8,
-  },
-  
-  backButtonText: {
-    fontSize: 24,
-    color: gymTheme.colors.text,
-    fontWeight: 'bold',
-  },
   
   headerTitle: {
     fontSize: 20,
