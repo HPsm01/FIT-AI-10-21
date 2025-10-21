@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400" height="800" viewBox="0 0 400 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 그라데이션 배경 -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0e27;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#1a1f3a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0a0e27;stop-opacity:1" />
+    </linearGradient>
+    <radialGradient id="accentGradient" cx="50%" cy="30%" r="60%">
+      <stop offset="0%" style="stop-color:#00d4ff;stop-opacity:0.1" />
+      <stop offset="100%" style="stop-color:#ff006e;stop-opacity:0.05" />
+    </radialGradient>
+  </defs>
+  
+  <!-- 배경 -->
+  <rect width="400" height="800" fill="url(#bgGradient)"/>
+  <rect width="400" height="800" fill="url(#accentGradient)"/>
+  
+  <!-- 패턴 요소들 -->
+  <circle cx="50" cy="100" r="20" fill="#00d4ff" opacity="0.1"/>
+  <circle cx="350" cy="200" r="30" fill="#ff006e" opacity="0.1"/>
+  <circle cx="100" cy="400" r="25" fill="#06ffa5" opacity="0.1"/>
+  <circle cx="300" cy="600" r="35" fill="#ffb800" opacity="0.1"/>
+  <circle cx="150" cy="700" r="20" fill="#00d4ff" opacity="0.1"/>
+</svg>

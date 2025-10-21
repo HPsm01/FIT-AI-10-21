@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, StatusBar,
   Alert, PermissionsAndroid, Platform, Linking, Modal, AppState, BackHandler
@@ -99,7 +99,7 @@ const getAnalyzedPresignedUrlByDateSet = async ({
     }
 
     // 실패 시(백업 경로들 시도 — 운영 환경에선 서버 API만 쓰는 걸 권장)
-    const s3Path = `fitvideoresult/${user.id}_${user.name}/${dateYmd}/${exerciseValue}/set${setNo}_${dateYmd}160000.mp4`;
+    const s3Path = `${S3_RESULT_FOLDER}/${user.id}_${user.name}/${dateYmd}/${exerciseValue}/set${setNo}_${dateYmd}160000.mp4`;
     const directS3Url = `https://thefit-bucket.s3.ap-northeast-2.amazonaws.com/${s3Path}`;
     const headRes = await fetch(directS3Url, { method: 'HEAD' });
     if (headRes.ok) return directS3Url;
@@ -118,9 +118,27 @@ const apiGetWorkoutsByDate = async ({ userId, dateYmd, exerciseValue }) => {
   console.log('📊 날짜별 운동 데이터 API:', url);
   const res = await fetch(url);
   if (!res.ok) throw new Error(`API ${res.status}`);
-  const payload = await res.json(); // { user_id, date, exercise_id, total_reps, items: [...] }
+  const payload = await res.json(); // { user_id, date, exercise_id, total_reps, items: [...] (각 item에 ai_feedback 포함) }
   return payload;
 };
+
+// === AI 피드백 파싱 유틸 ===
+const aiMemoFromItem = (item) => {
+  // item.ai_feedback: {headline, positives[], improvements[], action_items[]}
+  const ai = item?.ai_feedback;
+  if (!ai) return null;
+
+  // 전체 AI 피드백 객체를 JSON 문자열로 저장
+  try {
+    return JSON.stringify(ai);
+  } catch (error) {
+    console.error('AI 피드백 JSON 변환 실패:', error);
+    // 실패 시 headline만 반환
+    return ai?.headline?.trim() || null;
+  }
+};
+
+// fallbackMemoFromItem 제거 - ai_feedback만 사용
 
 // ================================
 // 화면/상태
@@ -130,11 +148,13 @@ const generateSets = () => Array.from({ length: 5 }, (_, i) => ({
   weight: '',
   reps: '',
   feedbackVideo: null,
+  analysisVideoUrl: null, // 분석 영상 URL
   memo: '',
   weightLocked: false,
+  videoUploaded: false,
 }));
 
-export default function MyExerciseScreen({ navigation }) {
+export default function MyExerciseScreen({ navigation, route }) {
   const { user, elapsed, isWorkingOut } = useContext(UserContext);
   const [selectedExercise, setSelectedExercise] = useState('squat');
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -147,9 +167,25 @@ export default function MyExerciseScreen({ navigation }) {
   const [downloadingVideo, setDownloadingVideo] = useState(false);
   const [dailyTotalReps, setDailyTotalReps] = useState(0);   // ← 총 반복수
   
+  // 폴링 상태 추적용 ref
+  const wasPollingRef = useRef(false);
+  
   // 비디오 플레이어 관련 상태
   const [videoUri, setVideoUri] = useState(null);
   const [showVideoPlayer, setShowVideoPlayer] = useState(false);
+
+  // 임시 함수들 (실제 구현 시 라이브러리 사용)
+  const recordAudio = async () => {
+    // react-native-audio-record 구현 필요
+    return new Promise((resolve) => {
+      setTimeout(() => resolve('mock_audio_data'), 2000);
+    });
+  };
+
+  const playAudio = (audioBlob) => {
+    // react-native-sound 구현 필요
+    console.log('음성 피드백 재생:', audioBlob);
+  };
 
   // 오늘 날짜를 실시간으로 가져오는 함수
   const getToday = () => new Date();
@@ -173,11 +209,10 @@ export default function MyExerciseScreen({ navigation }) {
     } else {
       // 오늘 날짜까지만 이동 가능 (내일로는 이동 불가)
       const today = getToday();
-      // 오늘 날짜와 같거나 크면 이동 불가
       if (newDate.getDate() >= today.getDate() && 
           newDate.getMonth() === today.getMonth() && 
           newDate.getFullYear() === today.getFullYear()) {
-        return; // 오늘 날짜 이상이면 이동 불가
+        return;
       }
       newDate.setDate(newDate.getDate() + 1);
     }
@@ -210,23 +245,27 @@ export default function MyExerciseScreen({ navigation }) {
   // ================================
   const loadExerciseSetsFromStorage = async (date = selectedDate) => {
     try {
-      const key = `exerciseSets_${formatDateForStorage(date)}`;
+      const key = `exerciseSets_${user?.id}_${formatDateForStorage(date)}`;
       const saved = await AsyncStorage.getItem(key);
 
+      let localData;
       if (saved) {
-        const parsed = JSON.parse(saved);
-        setExerciseSets(prev => ({ ...prev, ...parsed }));
+        localData = JSON.parse(saved);
+        setExerciseSets(localData); // 로컬 스토리지 데이터를 정확히 반영
+        console.log('✅ 로컬 스토리지에서 데이터 로드:', Object.keys(localData).map(k => `${k}: ${localData[k].length}개`));
       } else {
         // 해당 날짜에 데이터가 없으면 빈 세트로 초기화
-        setExerciseSets({
+        localData = {
           deadlift: generateSets(),
           squat: generateSets(),
           bench_press: generateSets(),
-        });
+        };
+        setExerciseSets(localData);
+        console.log('ℹ️ 로컬 데이터 없음 - 기본 5개 세트로 초기화');
       }
 
-      // 서버에서도 해당 날짜의 운동 데이터를 불러와서 병합
-      await loadExerciseDataFromServer(date);
+      // 서버에서도 해당 날짜의 운동 데이터를 불러와서 병합 (로컬 데이터를 직접 전달)
+      await loadExerciseDataFromServer(date, localData);
 
     } catch (e) {
       console.error('세트 데이터 불러오기 실패:', e);
@@ -234,7 +273,7 @@ export default function MyExerciseScreen({ navigation }) {
   };
 
   // 서버에서 특정 날짜의 운동 데이터(생성일 기준) 불러와서 로컬과 병합
-  const loadExerciseDataFromServer = async (date) => {
+  const loadExerciseDataFromServer = async (date, localData = null) => {
     if (!user?.id) return;
     try {
       const ymd = formatDateForStorage(date); // YYYY-MM-DD
@@ -250,19 +289,40 @@ export default function MyExerciseScreen({ navigation }) {
       const serverList = Array.isArray(payload?.items) ? payload.items : [];
 
       if (serverList.length > 0) {
-        // 서버 → 로컬 세트 형태로 변환
-        const normalized = serverList.map((it, idx) => ({
-          exercise: selectedExercise,
-          weight: it.weight || '',
-          reps: it.rep_cnt || '',
-          memo: it.feedback?.depth || '피드백 없음',
-          weightLocked: !!it.weight,
-        }));
+        // ✅ 서버 → 로컬 세트 형태로 변환 (ai_feedback만 사용)
+        const normalized = serverList.map((it) => {
+          const memoFromAI = aiMemoFromItem(it);
+          
+          // AI 피드백이 있으면 그것을 사용, 없으면 분석 대기 중으로 표시
+          let memo;
+          if (memoFromAI) {
+            memo = memoFromAI; // AI 피드백이 있음
+          } else if (!!it.weight) {
+            memo = '영상 업로드 완료 - 분석 대기 중...'; // 무게는 있지만 AI 피드백 없음 = 분석 중
+          } else {
+            memo = '피드백 없음'; // 무게도 없고 AI 피드백도 없음
+          }
+          
+          // 분석 영상 URL 추출 (미사용 - presigned URL 방식 사용)
+          const analysisVideoUrl = it.video_url || it.analysis_video_url || it.analyzed_video_url || null;
+          
+          return {
+            exercise: selectedExercise,
+            weight: it.weight || '',
+            reps: it.rep_cnt || '',
+            memo,
+            analysisVideoUrl, // 분석 영상 URL 저장
+            weightLocked: !!it.weight,
+            videoUploaded: !!it.weight, // 서버에 무게 데이터가 있으면 영상 업로드 완료로 간주
+          };
+        });
 
-        const merged = mergeServerDataWithLocal(exerciseSets, normalized);
+        // localData가 전달되면 그것을 사용, 아니면 현재 state 사용
+        const dataToMerge = localData || exerciseSets;
+        const merged = mergeServerDataWithLocal(dataToMerge, normalized, selectedExercise);
         setExerciseSets(merged);
         await saveExerciseSetsToStorage(merged, date);
-        console.log('✅ 날짜별 서버 데이터 병합 완료');
+        console.log('✅ 날짜별 서버 데이터 병합 완료:', `${selectedExercise} ${merged[selectedExercise]?.length || 0}개 세트`);
       } else {
         // 서버 데이터 없음 → total=0 반영
         setDailyTotalReps(0);
@@ -276,7 +336,7 @@ export default function MyExerciseScreen({ navigation }) {
 
   const saveExerciseSetsToStorage = async (sets, date = selectedDate) => {
     try {
-      const key = `exerciseSets_${formatDateForStorage(date)}`;
+      const key = `exerciseSets_${user?.id}_${formatDateForStorage(date)}`;
       await AsyncStorage.setItem(key, JSON.stringify(sets));
     } catch (e) {
       console.error('세트 데이터 저장 실패:', e);
@@ -288,7 +348,6 @@ export default function MyExerciseScreen({ navigation }) {
   // ================================
   const loadPreviousWorkouts = async (date = selectedDate) => {
     try {
-      const dateStr = formatDateForStorage(date);
       const workouts = [];
 
       // 최근 7일간의 운동 기록을 불러옴
@@ -298,7 +357,7 @@ export default function MyExerciseScreen({ navigation }) {
         const checkDateStr = formatDateForStorage(checkDate);
 
         // AsyncStorage에서 데이터 확인
-        const key = `exerciseSets_${checkDateStr}`;
+        const key = `exerciseSets_${user?.id}_${checkDateStr}`;
         const saved = await AsyncStorage.getItem(key);
         let workoutData = null;
 
@@ -327,26 +386,46 @@ export default function MyExerciseScreen({ navigation }) {
   };
 
   // 서버 데이터와 로컬 데이터 병합
-  const mergeServerDataWithLocal = (localData, serverData) => {
+  const mergeServerDataWithLocal = (localData, serverData, targetExercise) => {
     const merged = { ...localData };
 
-    Object.keys(merged).forEach(exercise => {
-      if (merged[exercise] && Array.isArray(merged[exercise])) {
-        merged[exercise] = merged[exercise].map((set, idx) => {
-          const serverSet = serverData[idx];
-          if (serverSet) {
-            return {
-              ...set,
-              weight: serverSet.weight || set.weight,
-              reps: serverSet.reps || set.reps,
-              memo: serverSet.memo || set.memo || '피드백 없음',
-              weightLocked: serverSet.weight ? true : set.weightLocked,
-            };
-          }
-          return set;
-        });
-      }
-    });
+    // targetExercise가 지정된 경우, 해당 운동만 병합
+    if (targetExercise && merged[targetExercise] && Array.isArray(merged[targetExercise])) {
+      merged[targetExercise] = merged[targetExercise].map((set, idx) => {
+        const serverSet = serverData[idx];
+        if (serverSet) {
+          return {
+            ...set,
+            weight: serverSet.weight || set.weight,
+            reps: serverSet.reps || set.reps,
+            memo: serverSet.memo || set.memo || '피드백 없음',
+            weightLocked: serverSet.weightLocked || set.weightLocked, // 로컬 상태 보존
+            videoUploaded: set.videoUploaded || serverSet.videoUploaded, // 로컬 상태 우선
+          };
+        }
+        return set;
+      });
+    } else {
+      // targetExercise가 없으면 모든 운동 병합 (이전 방식)
+      Object.keys(merged).forEach(exercise => {
+        if (merged[exercise] && Array.isArray(merged[exercise])) {
+          merged[exercise] = merged[exercise].map((set, idx) => {
+            const serverSet = serverData[idx];
+            if (serverSet) {
+              return {
+                ...set,
+                weight: serverSet.weight || set.weight,
+                reps: serverSet.reps || set.reps,
+                memo: serverSet.memo || set.memo || '피드백 없음',
+                weightLocked: serverSet.weightLocked || set.weightLocked, // 로컬 상태 보존
+                videoUploaded: set.videoUploaded || serverSet.videoUploaded, // 로컬 상태 우선
+              };
+            }
+            return set;
+          });
+        }
+      });
+    }
 
     return merged;
   };
@@ -460,7 +539,7 @@ export default function MyExerciseScreen({ navigation }) {
         i === idx ? { ...s, weight: value } : s
       );
       const next = { ...prev, [selectedExercise]: updated };
-      saveExerciseSetsToStorage(next);
+      saveExerciseSetsToStorage(next, selectedDate);
       return next;
     });
   };
@@ -480,31 +559,36 @@ export default function MyExerciseScreen({ navigation }) {
     }
 
     // 이미 영상 업로드가 완료된 경우
-    if (set.memo && (set.memo.includes('분석 완료') || set.memo.includes('영상 업로드 중'))) {
-      Alert.alert('알림', '이미 영상 업로드가 완료되었거나 진행 중인 세트입니다.');
+    if (set.videoUploaded || set.weightLocked) {
+      Alert.alert('알림', '이미 영상을 업로드한 세트입니다.');
       return;
     }
 
-    // 무게 고정 및 영상 업로드 상태 표시
-    setExerciseSets(prev => {
-      const updated = prev[selectedExercise].map((s, i) =>
-        i === idx ? { ...s, weightLocked: true, memo: '영상 업로드 중...' } : s
-      );
-      const next = { ...prev, [selectedExercise]: updated };
-      saveExerciseSetsToStorage(next);
-      return next;
-    });
+    // 무게 고정 및 영상 업로드 플래그 설정 (즉시 저장)
+    const updatedSets = {
+      ...exerciseSets,
+      [selectedExercise]: exerciseSets[selectedExercise].map((s, i) =>
+        i === idx ? { ...s, weightLocked: true, videoUploaded: true, memo: '영상 업로드 완료 - 분석 대기 중...' } : s
+      )
+    };
+    
+    // 즉시 상태 업데이트 및 저장
+    setExerciseSets(updatedSets);
+    saveExerciseSetsToStorage(updatedSets, selectedDate);
 
     // 업로드용 키 생성 후 업로드 화면으로 이동 (⚠️ exerciseId 포함)
     const weightVal = set.weight || '0';
     const ts14 = buildTimestamp14();
     const uploadKey = buildUploadKey(user, weightVal, selectedExercise, ts14);
 
-    navigation.navigate('ExercisePaper', {
-      s3KeyName: uploadKey,
-      exercise: selectedExercise,                 // 'squat' | 'deadlift' | 'bench_press'
-      exerciseId: getExerciseId(selectedExercise) // 1 | 2 | 3
-    });
+    // 약간의 지연 후 네비게이션 (저장 완료 보장)
+    setTimeout(() => {
+      navigation.navigate('ExercisePaper', {
+        s3KeyName: uploadKey,
+        exercise: selectedExercise,                 // 'squat' | 'deadlift' | 'bench_press'
+        exerciseId: getExerciseId(selectedExercise) // 1 | 2 | 3
+      });
+    }, 100);
   };
 
   const handleSetChange = (idx, field, value) => {
@@ -518,7 +602,7 @@ export default function MyExerciseScreen({ navigation }) {
     });
   };
 
-  const handleAddSet = () => {
+  const handleAddSet = async () => {
     // 오늘 날짜가 아닌 경우 세트 추가 불가
     const isToday = selectedDate.toDateString() === getToday().toDateString();
     if (!isToday) {
@@ -531,10 +615,15 @@ export default function MyExerciseScreen({ navigation }) {
         ...prev,
         [selectedExercise]: [
           ...prev[selectedExercise],
-          { set: prev[selectedExercise].length + 1, weight: '', reps: '', feedbackVideo: null, memo: '', weightLocked: false }
+          { set: prev[selectedExercise].length + 1, weight: '', reps: '', feedbackVideo: null, analysisVideoUrl: null, memo: '', weightLocked: false, videoUploaded: false }
         ]
       };
-      saveExerciseSetsToStorage(next);
+      // 즉시 저장하여 다른 화면 갔다 와도 유지되도록
+      saveExerciseSetsToStorage(next, selectedDate).then(() => {
+        console.log('✅ 세트 추가 후 저장 완료');
+        // 피드백도 함께 새로고침
+        fetchFeedback();
+      });
       return next;
     });
   };
@@ -550,16 +639,6 @@ export default function MyExerciseScreen({ navigation }) {
         download: true,
       });
       await openPresignedUrl(url);
-
-      // 해당 세트의 메모 업데이트
-      setExerciseSets(prev => {
-        const updated = prev[selectedExercise].map((s, i) =>
-          i === setIndex ? { ...s, memo: '분석 완료 - 피드백 영상 확인 가능' } : s
-        );
-        const next = { ...prev, [selectedExercise]: updated };
-        saveExerciseSetsToStorage(next);
-        return next;
-      });
 
     } catch (error) {
       console.error('❌ 피드백 받기 오류:', error);
@@ -588,22 +667,52 @@ export default function MyExerciseScreen({ navigation }) {
 
       const list = Array.isArray(payload?.items) ? payload.items : [];
       if (list.length > 0) {
-        const serverData = list.map(item => ({
-          exercise: selectedExercise,
-          weight: item.weight || '',
-          reps: item.rep_cnt || '',
-          memo: item.feedback?.depth || '피드백 없음',
-          weightLocked: !!item.weight,
-        }));
+        const serverData = list.map(item => {
+          const memoFromAI = aiMemoFromItem(item);
+          
+          // AI 피드백이 있으면 그것을 사용, 없으면 분석 대기 중으로 표시
+          let memo;
+          if (memoFromAI) {
+            memo = memoFromAI; // AI 피드백이 있음
+          } else if (!!item.weight) {
+            memo = '영상 업로드 완료 - 분석 대기 중...'; // 무게는 있지만 AI 피드백 없음 = 분석 중
+          } else {
+            memo = '피드백 없음'; // 무게도 없고 AI 피드백도 없음
+          }
+          
+          // 분석 영상 URL 추출 (미사용 - presigned URL 방식 사용)
+          const analysisVideoUrl = item.video_url || item.analysis_video_url || item.analyzed_video_url || null;
+          
+          return {
+            exercise: selectedExercise,
+            weight: item.weight || '',
+            reps: item.rep_cnt || '',
+            memo,
+            analysisVideoUrl, // 분석 영상 URL 저장
+            weightLocked: !!item.weight,
+            videoUploaded: !!item.weight, // 서버에 무게 데이터가 있으면 영상 업로드 완료로 간주
+          };
+        });
 
         setExerciseSets(prev => {
           const updated = { ...prev };
           updated[selectedExercise] = updated[selectedExercise].map((set, idx) => {
             const serverSet = serverData[idx];
-            return serverSet ? { ...set, ...serverSet } : set;
+            if (serverSet) {
+              // 서버 데이터가 있으면 병합하되, 로컬의 videoUploaded 상태 보존
+              return {
+                ...set,
+                ...serverSet,
+                videoUploaded: serverSet.videoUploaded || set.videoUploaded, // 로컬 상태 보존
+              };
+            }
+            return set;
           });
+          saveExerciseSetsToStorage(updated, selectedDate);
           return updated;
         });
+      } else {
+        setDailyTotalReps(0);
       }
     } catch (e) {
       console.error('피드백 데이터 불러오기 실패:', e);
@@ -612,18 +721,21 @@ export default function MyExerciseScreen({ navigation }) {
   };
 
   useFocusEffect(React.useCallback(() => {
-    loadExerciseSetsFromStorage();
-    loadPreviousWorkouts();
-    checkCheckInStatus();
-  }, []));
+    const loadData = async () => {
+      await loadExerciseSetsFromStorage(selectedDate);
+      await loadPreviousWorkouts(selectedDate);
+      await fetchFeedback(); // 서버 데이터 확인하여 업로드 상태 동기화
+    };
+    loadData();
+    // checkCheckInStatus(); // 알람 제거됨
+  }, [selectedDate, selectedExercise]));
 
   // 하드웨어 백 버튼 핸들러
   useFocusEffect(
     React.useCallback(() => {
       const onBackPress = () => {
-        // 이전 페이지로 돌아가기
         navigation.goBack();
-        return true; // 기본 백 동작 방지
+        return true;
       };
 
       const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
@@ -631,21 +743,12 @@ export default function MyExerciseScreen({ navigation }) {
     }, [navigation])
   );
 
-  // 입실 상태 확인 함수
+  // 입실 상태 확인 함수 (알람 제거됨)
   const checkCheckInStatus = async () => {
     try {
       const checkInTime = await AsyncStorage.getItem('checkInTime');
       if (!checkInTime) {
-        Alert.alert(
-          '입실 기록 없음',
-          '입실 기록이 없습니다. 입실 화면으로 이동합니다.',
-          [
-            {
-              text: '확인',
-              onPress: () => navigation.reset({ index: 0, routes: [{ name: 'CheckIn' }] }),
-            },
-          ]
-        );
+        navigation.navigate('CheckIn');
       }
     } catch (error) {
       console.error('입실 상태 확인 중 오류:', error);
@@ -654,28 +757,66 @@ export default function MyExerciseScreen({ navigation }) {
 
   useEffect(() => { fetchFeedback(); }, [user?.id, selectedExercise, selectedDate]);
 
+  // 영상 업로드 완료 후 자동 새로고침
+  useEffect(() => {
+    if (route?.params?.videoUploaded) {
+      console.log('✅ 영상 업로드 완료 감지 - 자동 새로고침');
+      fetchFeedback();
+      // 파라미터 초기화 (한 번만 실행되도록)
+      navigation.setParams({ videoUploaded: false, timestamp: undefined });
+    }
+  }, [route?.params?.videoUploaded, route?.params?.timestamp]);
+
+  // AI 피드백 & 분석 영상 대기 중인 세트가 있으면 5초마다 확인
+  useEffect(() => {
+    // 현재 선택된 운동의 세트 중에 분석 대기 중이거나 분석 영상 URL이 없는 세트가 있는지 확인
+    const currentSets = exerciseSets[selectedExercise] || [];
+    const hasWaitingSets = currentSets.some(set => 
+      set.videoUploaded && (
+        set.memo === '영상 업로드 완료 - 분석 대기 중...' || // AI 피드백 대기 중
+        !set.analysisVideoUrl // 분석 영상 URL이 아직 생성되지 않음
+      )
+    );
+
+    // 폴링 중지 시 최종 새로고침 처리
+    if (!hasWaitingSets && wasPollingRef.current) {
+      console.log('⏹️ AI 피드백 & 분석 영상 폴링 중지 - 최종 새로고침 실행');
+      wasPollingRef.current = false;
+      // 비동기로 최종 새로고침 실행
+      setTimeout(() => {
+        fetchFeedback();
+      }, 100);
+      return;
+    }
+
+    if (!hasWaitingSets) {
+      wasPollingRef.current = false;
+      return; // 대기 중인 세트가 없으면 폴링 안 함
+    }
+
+    console.log('🔄 AI 피드백 & 분석 영상 대기 중 - 10초마다 확인 시작');
+    wasPollingRef.current = true; // 폴링 시작 표시
+    
+    // 10초마다 서버에서 AI 피드백 & 분석 영상 URL 확인
+    const intervalId = setInterval(() => {
+      console.log('⏰ AI 피드백 & 분석 영상 확인 중...');
+      fetchFeedback();
+    }, 10000); // 10초
+
+    // cleanup: 컴포넌트 언마운트 또는 의존성 변경 시 interval 제거
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [exerciseSets, selectedExercise]);
+
+
   // 앱 상태 변화 감지 및 강제퇴실 기능
   useEffect(() => {
     let backgroundTimer = null;
     let isLoggedOut = false;
 
     const handleAppStateChange = (nextAppState) => {
-      if (nextAppState === 'background' || nextAppState === 'inactive') {
-        if (!isLoggedOut) {
-          Alert.alert(
-            '앱 종료 경고',
-            '앱을 종료하면 3초 후 자동으로 로그아웃됩니다.',
-            [
-              { text: '취소', style: 'cancel' },
-              { text: '종료', onPress: () => {
-                backgroundTimer = setTimeout(() => {
-                  if (!isLoggedOut) handleForceLogout();
-                }, 3000);
-              }}
-            ]
-          );
-        }
-      } else if (nextAppState === 'active') {
+      if (nextAppState === 'active') {
         if (backgroundTimer) {
           clearTimeout(backgroundTimer);
           backgroundTimer = null;
@@ -692,7 +833,7 @@ export default function MyExerciseScreen({ navigation }) {
         await AsyncStorage.removeItem('userToken');
 
         const keys = await AsyncStorage.getAllKeys();
-        const exerciseKeys = keys.filter(key => key.startsWith('exerciseSets_'));
+        const exerciseKeys = keys.filter(key => key.startsWith(`exerciseSets_${user?.id}_`));
         await AsyncStorage.multiRemove(exerciseKeys);
 
         Alert.alert(
@@ -713,7 +854,6 @@ export default function MyExerciseScreen({ navigation }) {
     };
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);
-
 
     return () => {
       subscription?.remove();
@@ -747,7 +887,6 @@ export default function MyExerciseScreen({ navigation }) {
             <Text style={styles.dateArrowText}>▶</Text>
           </TouchableOpacity>
         </View>
-
 
         <CommonHeader
           navigation={navigation}
@@ -791,107 +930,196 @@ export default function MyExerciseScreen({ navigation }) {
             </Text>
           </View>
 
-          {sets.map((set, idx) => (
-            <View key={idx} style={styles.setCard}>
-              <View style={styles.setHeader}>
-                <Text style={styles.setNumber}>{set.set}세트</Text>
+          {sets.map((set, idx) => {
+            const isToday = selectedDate.toDateString() === getToday().toDateString();
+            const isAnalyzed = !!set.memo && set.memo !== '피드백 없음'; // ✅ AI 피드백이 있으면 분석완료로 간주
+            return (
+              <View key={idx} style={styles.setCard}>
+                <View style={styles.setHeader}>
+                  <Text style={styles.setNumber}>{set.set}세트</Text>
 
-                <View style={styles.weightContainer}>
-                  <TextInput
-                    style={[
-                      styles.weightInput,
-                      !set.weight || set.weight.trim() === '' ? styles.weightInputRequired : null,
-                      (set.weightLocked || (set.memo && set.memo !== '피드백 없음') || selectedDate.toDateString() !== getToday().toDateString()) ? styles.weightInputLocked : null
-                    ]}
-                    value={set.weight?.toString() ?? ''}
-                    onChangeText={txt => handleWeightChange(idx, txt.replace(/[^0-9]/g, '').slice(0,3))}
-                    keyboardType="numeric"
-                    maxLength={3}
-                    placeholder="무게"
-                    placeholderTextColor={gymTheme.colors.textMuted}
-                    editable={!set.weightLocked && (!set.memo || set.memo === '피드백 없음') && selectedDate.toDateString() === getToday().toDateString()}
-                  />
-                  <Text style={styles.weightUnit}>kg</Text>
-                </View>
-              </View>
-
-              <View style={styles.setContent}>
-                <View style={styles.memoContainer}>
-                  <Text style={styles.memoLabel}>피드백:</Text>
-                  <Text style={styles.memoText}>
-                    {set.memo ? set.memo : '피드백 없음'}
-                  </Text>
-                </View>
-
-                {!set.memo || set.memo === '피드백 없음' ? (
-                  selectedDate.toDateString() === getToday().toDateString() ? (
-                    <TouchableOpacity
+                  <View style={styles.weightContainer}>
+                    <TextInput
                       style={[
-                        styles.uploadButton,
-                        !set.weight || set.weight.trim() === '' ? styles.uploadButtonDisabled : null
+                        styles.weightInput,
+                        !set.weight || set.weight.trim() === '' ? styles.weightInputRequired : null,
+                        (set.weightLocked || isAnalyzed || !isToday) ? styles.weightInputLocked : null
                       ]}
-                      onPress={() => handleVideoUpload(idx)}
-                      disabled={!set.weight || set.weight.trim() === ''}>
-                      <View style={[
-                        styles.uploadContainer,
-                        set.weight && set.weight.trim() !== '' ? styles.uploadActive : styles.uploadInactive
-                      ]}>
-                        <Text style={styles.uploadIcon}>📹</Text>
-                        <Text style={styles.uploadText}>영상 업로드</Text>
-                      </View>
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={styles.uploadDisabledContainer}>
-                      <Text style={styles.uploadDisabledIcon}>📹</Text>
-                      <Text style={styles.uploadDisabledText}>오늘만 가능</Text>
-                    </View>
-                  )
-                ) : set.memo && set.memo.includes('분석 완료') ? (
-                  <TouchableOpacity
-                    style={styles.analysisButton}
-                    onPress={() => handleGetFeedbackWithVideo(idx)}>
-                    <View style={styles.analysisContainer}>
-                      <Text style={styles.analysisIcon}>📊</Text>
-                      <Text style={styles.analysisText}>분석 영상 보기</Text>
-                    </View>
-                  </TouchableOpacity>
-                ) : set.memo && set.memo.includes('영상 업로드 중') ? (
-                  <View style={styles.uploadingContainer}>
-                    <Text style={styles.uploadingIcon}>⏳</Text>
-                    <Text style={styles.uploadingText}>영상 업로드 중...</Text>
+                      value={set.weight?.toString() ?? ''}
+                      onChangeText={txt => handleWeightChange(idx, txt.replace(/[^0-9]/g, '').slice(0,3))}
+                      keyboardType="numeric"
+                      maxLength={3}
+                      placeholder="무게"
+                      placeholderTextColor={gymTheme.colors.textMuted}
+                      editable={!set.weightLocked && !isAnalyzed && isToday}
+                    />
+                    <Text style={styles.weightUnit}>kg</Text>
                   </View>
-                ) : set.memo && set.memo !== '피드백 없음' ? (
-                  <TouchableOpacity
-                    style={styles.analysisButton}
-                    onPress={() => handleGetFeedbackWithVideo(idx)}>
-                    <View style={styles.analysisContainer}>
-                      <Text style={styles.analysisIcon}>📊</Text>
-                      <Text style={styles.analysisText}>분석 영상 보기</Text>
+                </View>
+
+                <View style={styles.setContent}>
+                  {/* 분석 대기 중 표시 */}
+                  {set.videoUploaded && (!set.memo || set.memo === '영상 업로드 완료 - 분석 대기 중...') && (
+                    <View style={styles.waitingContainer}>
+                      <View style={styles.waitingHeader}>
+                        <Text style={styles.waitingIcon}>⏳</Text>
+                        <Text style={styles.waitingTitle}>AI 분석 진행 중</Text>
+                      </View>
+                      <Text style={styles.waitingText}>
+                        업로드한 영상을 AI가 분석하고 있습니다.{'\n'}
+                        잠시만 기다려주세요!
+                      </Text>
+                      <View style={styles.waitingSteps}>
+                        <View style={styles.waitingStep}>
+                          <Text style={styles.stepIcon}>✓</Text>
+                          <Text style={styles.stepText}>영상 업로드 완료</Text>
+                        </View>
+                        <View style={styles.waitingStep}>
+                          <Text style={styles.stepIconActive}>⟳</Text>
+                          <Text style={styles.stepTextActive}>자세 분석 중...</Text>
+                        </View>
+                        <View style={styles.waitingStep}>
+                          <Text style={styles.stepIconPending}>○</Text>
+                          <Text style={styles.stepTextPending}>피드백 생성 대기</Text>
+                        </View>
+                      </View>
                     </View>
-                  </TouchableOpacity>
-                ) : (
-                  (() => {
-                    const isPastDate = selectedDate.toDateString() !== getToday().toDateString();
-                    const hasWeight = set.weight && set.weight.trim() !== '';
-                    const hasNoFeedback = !set.memo || set.memo === '피드백 없음';
-                    if (isPastDate && hasWeight && hasNoFeedback) {
-                      return (
-                        <TouchableOpacity
-                          style={styles.analysisButton}
-                          onPress={() => handleGetFeedbackWithVideo(idx)}>
-                          <View style={styles.analysisContainer}>
-                            <Text style={styles.analysisIcon}>🔍</Text>
-                            <Text style={styles.analysisText}>피드백 영상 확인</Text>
-                          </View>
-                        </TouchableOpacity>
-                      );
+                  )}
+
+                  {/* AI 피드백 표시 영역 */}
+                  {set.memo && set.memo !== '피드백 없음' && set.memo !== '영상 업로드 완료 - 분석 대기 중...' && (
+                    <View style={styles.memoContainer}>
+                      <Text style={styles.memoLabel}>🤖 AI Feedback:</Text>
+                      {(() => {
+                        try {
+                          let feedback = set.memo;
+                          
+                          // JSON 문자열인 경우 파싱 시도
+                          if (typeof set.memo === 'string') {
+                            const trimmed = set.memo.trim();
+                            
+                            if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                              try {
+                                feedback = JSON.parse(trimmed);
+                              } catch (parseError) {
+                                // JSON 파싱 실패 시 원본 텍스트 사용
+                              }
+                            }
+                          }
+                          
+                          // JSON 객체인 경우 구조화된 형태로 표시
+                          if (typeof feedback === 'object' && feedback !== null && !Array.isArray(feedback)) {
+                            return (
+                              <View style={styles.feedbackStructured}>
+                                {feedback.headline && (
+                                  <Text style={styles.feedbackHeadline}>{feedback.headline}</Text>
+                                )}
+                                
+                                {feedback.positives && Array.isArray(feedback.positives) && feedback.positives.length > 0 && (
+                                  <View style={styles.feedbackSection}>
+                                    <Text style={styles.feedbackSectionTitle}>✅ 잘한 점:</Text>
+                                    {feedback.positives.map((item, i) => (
+                                      <Text key={`positive-${i}`} style={styles.feedbackItem}>• {item}</Text>
+                                    ))}
+                                  </View>
+                                )}
+                                
+                                {feedback.improvements && Array.isArray(feedback.improvements) && feedback.improvements.length > 0 && (
+                                  <View style={styles.feedbackSection}>
+                                    <Text style={styles.feedbackSectionTitle}>⚠️ 개선 필요:</Text>
+                                    {feedback.improvements.map((item, i) => (
+                                      <Text key={`improvement-${i}`} style={styles.feedbackItem}>• {item}</Text>
+                                    ))}
+                                  </View>
+                                )}
+                                
+                                {feedback.action_items && Array.isArray(feedback.action_items) && feedback.action_items.length > 0 && (
+                                  <View style={styles.feedbackSection}>
+                                    <Text style={styles.feedbackSectionTitle}>💡 실천 방법:</Text>
+                                    {feedback.action_items.map((item, i) => (
+                                      <Text key={`action-${i}`} style={styles.feedbackItem}>• {item}</Text>
+                                    ))}
+                                  </View>
+                                )}
+                              </View>
+                            );
+                          }
+                          
+                          // 문자열인 경우 그대로 표시
+                          return <Text style={styles.memoText}>{String(feedback)}</Text>;
+                        } catch (error) {
+                          // 오류 발생 시 원본 텍스트 표시
+                          return <Text style={styles.memoText}>{set.memo}</Text>;
+                        }
+                      })()}
+                    </View>
+                  )}
+
+                  {/* 분석 영상 보기 버튼 - AI 피드백이 있을 때 표시 */}
+                  {(() => {
+                    // AI 피드백이 유효한지 확인
+                    if (!set.memo || set.memo === '피드백 없음' || set.memo === '영상 업로드 완료 - 분석 대기 중...') {
+                      return null;
+                    }
+                    
+                    // JSON 파싱 시도
+                    try {
+                      const parsed = JSON.parse(set.memo);
+                      if (parsed && typeof parsed === 'object' && (parsed.headline || parsed.positives || parsed.improvements || parsed.action_items)) {
+                        // 유효한 AI 피드백이 있음 - 버튼 표시
+                        return (
+                          <TouchableOpacity
+                            style={styles.analysisVideoButton}
+                            onPress={() => handleGetFeedbackWithVideo(idx)}
+                          >
+                            <Text style={styles.analysisVideoButtonText}>📹 분석 영상 보기</Text>
+                          </TouchableOpacity>
+                        );
+                      }
+                    } catch (error) {
+                      // JSON이 아니지만 텍스트 피드백이 있을 수 있음
+                      if (set.memo.length > 5) {
+                        return (
+                          <TouchableOpacity
+                            style={styles.analysisVideoButton}
+                            onPress={() => handleGetFeedbackWithVideo(idx)}
+                          >
+                            <Text style={styles.analysisVideoButtonText}>📹 분석 영상 보기</Text>
+                          </TouchableOpacity>
+                        );
+                      }
                     }
                     return null;
-                  })()
-                )}
+                  })()}
+
+                  {!isAnalyzed && !set.videoUploaded ? (
+                    isToday ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.uploadButton,
+                          (!set.weight || set.weight.trim() === '' || set.videoUploaded) ? styles.uploadButtonDisabled : null
+                        ]}
+                        onPress={() => handleVideoUpload(idx)}
+                        disabled={!set.weight || set.weight.trim() === '' || set.videoUploaded}>
+                        <View style={[
+                          styles.uploadContainer,
+                          set.weight && set.weight.trim() !== '' && !set.videoUploaded ? styles.uploadActive : styles.uploadInactive
+                        ]}>
+                          <Text style={styles.uploadIcon}>📹</Text>
+                          <Text style={styles.uploadText}>영상 업로드</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={styles.uploadDisabledContainer}>
+                        <Text style={styles.uploadDisabledIcon}>📹</Text>
+                        <Text style={styles.uploadDisabledText}>오늘만 가능</Text>
+                      </View>
+                    )
+                  ) : null}
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
 
           {/* 세트 추가 - 오늘 날짜에만 표시 */}
           {selectedDate.toDateString() === getToday().toDateString() && (
@@ -901,6 +1129,7 @@ export default function MyExerciseScreen({ navigation }) {
           )}
         </View>
 
+
         {/* 새로고침 */}
         <TouchableOpacity style={styles.refreshButton} onPress={fetchFeedback}>
           <View style={styles.refreshContainer}>
@@ -909,20 +1138,6 @@ export default function MyExerciseScreen({ navigation }) {
         </TouchableOpacity>
 
         {/* 디버깅용 테스트 버튼 */}
-        <TouchableOpacity
-          style={[styles.refreshButton, { marginTop: 10, backgroundColor: '#FF6B6B' }]}
-          onPress={() => {
-            if (exerciseSets[selectedExercise][0].weight) {
-              handleGetFeedbackWithVideo(0);
-            } else {
-              Alert.alert('테스트', '먼저 첫 번째 세트에 무게를 입력해주세요.');
-            }
-          }}
-        >
-          <View style={styles.refreshContainer}>
-            <Text style={styles.refreshText}>🧪 피드백 영상 테스트</Text>
-          </View>
-        </TouchableOpacity>
       </ScrollView>
 
       {/* 날짜 선택 모달 */}
@@ -949,7 +1164,6 @@ export default function MyExerciseScreen({ navigation }) {
                   const newDate = new Date(selectedDate);
                   newDate.setFullYear(year);
                   const today = getToday();
-                  // 오늘 날짜보다 크면 선택 불가
                   if (newDate.getFullYear() > today.getFullYear() ||
                       (newDate.getFullYear() === today.getFullYear() && newDate.getMonth() > today.getMonth()) ||
                       (newDate.getFullYear() === today.getFullYear() && newDate.getMonth() === today.getMonth() && newDate.getDate() > today.getDate())) {
@@ -980,7 +1194,6 @@ export default function MyExerciseScreen({ navigation }) {
                   const newDate = new Date(selectedDate);
                   newDate.setMonth(month - 1);
                   const today = getToday();
-                  // 오늘 날짜보다 크면 선택 불가
                   if (newDate.getFullYear() > today.getFullYear() ||
                       (newDate.getFullYear() === today.getFullYear() && newDate.getMonth() > today.getMonth()) ||
                       (newDate.getFullYear() === today.getFullYear() && newDate.getMonth() === today.getMonth() && newDate.getDate() > today.getDate())) {
@@ -1011,7 +1224,6 @@ export default function MyExerciseScreen({ navigation }) {
                   const newDate = new Date(selectedDate);
                   newDate.setDate(day);
                   const today = getToday();
-                  // 오늘 날짜보다 크면 선택 불가
                   if (newDate.getFullYear() > today.getFullYear() ||
                       (newDate.getFullYear() === today.getFullYear() && newDate.getMonth() > today.getMonth()) ||
                       (newDate.getFullYear() === today.getFullYear() && newDate.getMonth() === today.getMonth() && newDate.getDate() > today.getDate())) {
@@ -1057,7 +1269,6 @@ export default function MyExerciseScreen({ navigation }) {
               Alert.alert('오류', '비디오를 재생할 수 없습니다.');
             }}
             onEnd={() => {
-              // 비디오 재생 완료 시 자동으로 모달 닫기
               setShowVideoPlayer(false);
               setVideoUri(null);
             }}
@@ -1147,19 +1358,141 @@ const styles = StyleSheet.create({
   weightInputLocked: {
     backgroundColor: gymTheme.colors.success,
     borderColor: gymTheme.colors.success,
-    // 초록색 배경에서 글자가 잘 보이도록 흰색으로 변경합니다.
     color: '#FFFFFF', 
     fontWeight: 'bold',
   },
   weightUnit: { fontSize: 16, color: gymTheme.colors.textSecondary, marginRight: 8 },
 
   setContent: { marginBottom: gymTheme.spacing.md },
-  memoContainer: { marginBottom: gymTheme.spacing.md },
-  memoLabel: { fontSize: 14, color: gymTheme.colors.textSecondary, marginBottom: 4 },
-  memoText: {
-    fontSize: 14, color: gymTheme.colors.text, backgroundColor: gymTheme.colors.input,
-    padding: gymTheme.spacing.sm, borderRadius: gymTheme.borderRadius.small, minHeight: 40,
+  
+  // 분석 대기 중 스타일
+  waitingContainer: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: gymTheme.borderRadius.md,
+    padding: gymTheme.spacing.lg,
+    marginBottom: gymTheme.spacing.md,
+    borderWidth: 2,
+    borderColor: gymTheme.colors.accent,
+    ...gymTheme.shadows.medium,
   },
+  waitingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: gymTheme.spacing.md,
+  },
+  waitingIcon: {
+    fontSize: 24,
+    marginRight: gymTheme.spacing.sm,
+  },
+  waitingTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: gymTheme.colors.accent,
+  },
+  waitingText: {
+    fontSize: 14,
+    color: gymTheme.colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: gymTheme.spacing.md,
+    textAlign: 'center',
+  },
+  waitingSteps: {
+    marginTop: gymTheme.spacing.sm,
+  },
+  waitingStep: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: gymTheme.spacing.sm,
+  },
+  stepIcon: {
+    fontSize: 16,
+    color: gymTheme.colors.success,
+    marginRight: gymTheme.spacing.sm,
+    width: 20,
+  },
+  stepIconActive: {
+    fontSize: 16,
+    color: gymTheme.colors.accent,
+    marginRight: gymTheme.spacing.sm,
+    width: 20,
+  },
+  stepIconPending: {
+    fontSize: 16,
+    color: gymTheme.colors.textMuted,
+    marginRight: gymTheme.spacing.sm,
+    width: 20,
+  },
+  stepText: {
+    fontSize: 13,
+    color: gymTheme.colors.success,
+  },
+  stepTextActive: {
+    fontSize: 13,
+    color: gymTheme.colors.accent,
+    fontWeight: 'bold',
+  },
+  stepTextPending: {
+    fontSize: 13,
+    color: gymTheme.colors.textMuted,
+  },
+
+  memoContainer: { marginBottom: gymTheme.spacing.md },
+  memoLabel: { 
+    fontSize: 16, 
+    color: gymTheme.colors.accent, 
+    marginBottom: gymTheme.spacing.sm,
+    fontWeight: 'bold',
+  },
+  memoText: {
+    fontSize: 14, 
+    color: gymTheme.colors.textPrimary, 
+    backgroundColor: gymTheme.colors.cardElevated,
+    padding: gymTheme.spacing.md, 
+    borderRadius: gymTheme.borderRadius.md, 
+    minHeight: 50,
+    lineHeight: 20,
+    borderLeftWidth: 3,
+    borderLeftColor: gymTheme.colors.accent,
+    ...gymTheme.shadows.small,
+  },
+
+  // 구조화된 AI 피드백 스타일
+  feedbackStructured: {
+    backgroundColor: gymTheme.colors.cardElevated,
+    padding: gymTheme.spacing.md,
+    borderRadius: gymTheme.borderRadius.md,
+    borderLeftWidth: 3,
+    borderLeftColor: gymTheme.colors.accent,
+    ...gymTheme.shadows.small,
+  },
+  feedbackHeadline: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: gymTheme.colors.accent,
+    marginBottom: gymTheme.spacing.sm,
+    lineHeight: 21,
+    flexWrap: 'wrap', // 텍스트 줄바꿈
+  },
+  feedbackSection: {
+    marginTop: gymTheme.spacing.sm,
+  },
+  feedbackSectionTitle: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: gymTheme.colors.textPrimary,
+    marginBottom: gymTheme.spacing.xs,
+    flexWrap: 'wrap',
+  },
+  feedbackItem: {
+    fontSize: 12,
+    color: gymTheme.colors.textSecondary,
+    lineHeight: 18,
+    marginBottom: gymTheme.spacing.xs,
+    paddingLeft: gymTheme.spacing.sm,
+    flexWrap: 'wrap', // 텍스트 줄바꿈
+    flexShrink: 1, // 텍스트가 컨테이너에 맞게 축소
+  },
+
 
   uploadButton: { borderRadius: gymTheme.borderRadius.medium, overflow: 'hidden' },
   uploadButtonDisabled: { opacity: 0.5 },
@@ -1185,13 +1518,40 @@ const styles = StyleSheet.create({
   },
   refreshText: { color: gymTheme.colors.text, fontWeight: '600', fontSize: 16 },
 
-  analysisButton: { borderRadius: gymTheme.borderRadius.medium, overflow: 'hidden' },
-  analysisContainer: {
-    paddingVertical: gymTheme.spacing.md, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: gymTheme.colors.success, borderRadius: gymTheme.borderRadius.medium,
+  // 음성 피드백 스타일
+  voiceFeedbackContainer: {
+    backgroundColor: gymTheme.colors.cardElevated,
+    borderRadius: gymTheme.borderRadius.md,
+    padding: gymTheme.spacing.md,
+    marginTop: gymTheme.spacing.sm,
+    borderLeftWidth: 4,
+    borderLeftColor: gymTheme.colors.accent,
+    ...gymTheme.shadows.small,
   },
-  analysisIcon: { fontSize: 20, marginBottom: 4 },
-  analysisText: { color: gymTheme.colors.text, fontWeight: '600', fontSize: 14 },
+  voiceFeedbackText: {
+    color: gymTheme.colors.textPrimary,
+    fontSize: 14,
+    lineHeight: 20,
+    fontStyle: 'italic',
+  },
+
+
+  // 분석 영상 보기 버튼 스타일
+  analysisVideoButton: {
+    backgroundColor: gymTheme.colors.highlight,
+    borderRadius: gymTheme.borderRadius.md,
+    paddingVertical: gymTheme.spacing.sm,
+    paddingHorizontal: gymTheme.spacing.md,
+    marginTop: gymTheme.spacing.sm,
+    alignItems: 'center',
+    ...gymTheme.shadows.small,
+  },
+  analysisVideoButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
 
   uploadingContainer: {
     paddingVertical: gymTheme.spacing.md, alignItems: 'center', justifyContent: 'center',
@@ -1221,7 +1581,7 @@ const styles = StyleSheet.create({
   datePickerContainer: {
     flexDirection: 'row', justifyContent: 'space-around', marginBottom: gymTheme.spacing.lg,
   },
-    yearPicker: { 
+  yearPicker: { 
     width: 70, 
     height: 100, 
     color: '#000000',

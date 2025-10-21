@@ -1,11 +1,11 @@
-import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, StatusBar, Alert } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, StatusBar, Alert, SafeAreaView, Keyboard } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { useNavigation } from '@react-navigation/native';
 import PropTypes from 'prop-types';
 import { gymTheme, gymStyles } from '../styles/theme';
 
-const SighUpScreen = ({ navigation }) => {
+const SignUpScreen = ({ navigation }) => {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("010");
   const [year, setYear] = useState("2000");
@@ -15,16 +15,57 @@ const SighUpScreen = ({ navigation }) => {
   const [weight, setWeight] = useState("");
   const [height, setHeight] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [isKeyboardVisible, setKeyboardVisible] = useState(false);
 
-  const handleSighUpSubmit = async () => {
+  // 키보드 이벤트 리스너
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
+      setKeyboardVisible(true);
+    });
+    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+    });
+
+    return () => {
+      keyboardDidShowListener?.remove();
+      keyboardDidHideListener?.remove();
+    };
+  }, []);
+
+  // 전화번호 포맷팅 함수
+  const formatPhoneNumber = (text) => {
+    // 숫자만 추출하고 빈 문자열이면 그대로 반환
+    const numbers = text.replace(/[^0-9]/g, '');
+    
+    // 최대 11자리로 제한
+    let formatted = numbers;
+    if (formatted.length > 11) {
+      formatted = formatted.substring(0, 11);
+    }
+    
+    return formatPhoneWithHyphens(formatted);
+  };
+
+  // 하이픈 추가 함수 - 더 정교한 로직
+  const formatPhoneWithHyphens = (numbers) => {
+    if (numbers.length === 0) return '';
+    if (numbers.length <= 3) return numbers;
+    if (numbers.length <= 7) return numbers.substring(0, 3) + '-' + numbers.substring(3);
+    return numbers.substring(0, 3) + '-' + numbers.substring(3, 7) + '-' + numbers.substring(7);
+  };
+
+  const handleSignUpSubmit = async () => {
     if (!name.trim() || !phone.trim() || !weight.trim() || !height.trim()) {
       Alert.alert("입력 오류", "모든 필드를 입력해주세요.");
       return;
     }
 
+    // 전화번호에서 하이픈 제거
+    const phoneWithoutHyphens = phone.replace(/-/g, '');
+
     const userData = {
       username: name,
-      phonenumber: phone,
+      phonenumber: phoneWithoutHyphens,
       birthday: `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`,
       gender,
     };
@@ -69,12 +110,12 @@ const SighUpScreen = ({ navigation }) => {
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={gymTheme.colors.primary} />
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={gymTheme.colors.background} />
       
       {/* 헤더 */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>GYM BUDDY</Text>
+        <Text style={styles.headerTitle}>💪 THE FIT</Text>
         <Text style={styles.headerSubtitle}>회원가입</Text>
       </View>
 
@@ -105,8 +146,17 @@ const SighUpScreen = ({ navigation }) => {
                 placeholder="010-1234-5678"
                 placeholderTextColor={gymTheme.colors.textMuted}
                 value={phone}
-                onChangeText={setPhone}
+                onChangeText={(text) => {
+                  const formatted = formatPhoneNumber(text);
+                  setPhone(formatted);
+                }}
                 keyboardType="phone-pad"
+                maxLength={13}
+                selectTextOnFocus={false}
+                blurOnSubmit={false}
+                autoCorrect={false}
+                autoCapitalize="none"
+                returnKeyType="done"
               />
             </View>
           </View>
@@ -261,7 +311,7 @@ const SighUpScreen = ({ navigation }) => {
               styles.signUpButton,
               (!name.trim() || !phone.trim() || !weight.trim() || !height.trim()) ? styles.signUpButtonDisabled : null
             ]} 
-            onPress={handleSighUpSubmit}
+            onPress={handleSignUpSubmit}
             disabled={!name.trim() || !phone.trim() || !weight.trim() || !height.trim()}
           >
             <Text style={styles.signUpText}>회원가입 완료</Text>
@@ -272,39 +322,51 @@ const SighUpScreen = ({ navigation }) => {
           ) : null}
         </View>
       </ScrollView>
-    </View>
+
+      {/* 하단 정보 - 키보드가 올라올 때 숨김 */}
+      {!isKeyboardVisible && (
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>AI 피드백으로 정확한 운동을</Text>
+          <Text style={styles.footerSubtext}>카메라로 운동 자세를 분석해드립니다</Text>
+        </View>
+      )}
+    </SafeAreaView>
   );
 };
 
-SighUpScreen.propTypes = {
+SignUpScreen.propTypes = {
   navigation: PropTypes.object,
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: gymTheme.colors.primary,
+    backgroundColor: gymTheme.colors.background,
   },
   
   header: {
-    backgroundColor: gymTheme.colors.secondary,
-    paddingTop: 60,
-    paddingBottom: 30,
-    paddingHorizontal: gymTheme.spacing.lg,
     alignItems: 'center',
+    paddingTop: 40,
+    paddingBottom: 24,
+    backgroundColor: gymTheme.colors.secondary,
+    borderBottomLeftRadius: gymTheme.borderRadius.xxl,
+    borderBottomRightRadius: gymTheme.borderRadius.xxl,
+    ...gymTheme.shadows.large,
   },
   
   headerTitle: {
-    fontSize: 32,
+    fontSize: 24,
     fontWeight: 'bold',
     color: gymTheme.colors.accent,
     letterSpacing: 2,
-    marginBottom: 8,
+    marginBottom: gymTheme.spacing.xxs,
+    textAlign: 'center',
   },
   
   headerSubtitle: {
-    fontSize: 16,
+    fontSize: 13,
     color: gymTheme.colors.textSecondary,
+    textAlign: 'center',
   },
   
   scrollView: {
@@ -313,31 +375,30 @@ const styles = StyleSheet.create({
   
   content: {
     padding: gymTheme.spacing.lg,
+    paddingBottom: gymTheme.spacing.huge,
   },
   
   formCard: {
-    backgroundColor: gymTheme.colors.card,
-    borderRadius: gymTheme.borderRadius.large,
+    backgroundColor: gymTheme.colors.cardElevated,
+    borderRadius: gymTheme.borderRadius.lg,
     padding: gymTheme.spacing.xl,
+    borderWidth: 1,
+    borderColor: gymTheme.colors.borderLight,
     ...gymTheme.shadows.large,
   },
   
   formTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: gymTheme.colors.text,
+    ...gymTheme.typography.h3,
     textAlign: 'center',
     marginBottom: gymTheme.spacing.xl,
   },
   
   section: {
-    marginBottom: gymTheme.spacing.xl,
+    marginBottom: gymTheme.spacing.lg,
   },
   
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: gymTheme.colors.text,
+    ...gymTheme.typography.h5,
     marginBottom: gymTheme.spacing.md,
   },
   
@@ -346,21 +407,23 @@ const styles = StyleSheet.create({
   },
   
   label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: gymTheme.colors.text,
-    marginBottom: gymTheme.spacing.sm,
+    ...gymTheme.typography.subtitle2,
+    marginBottom: gymTheme.spacing.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    textAlign: 'left',
   },
   
   input: {
-    backgroundColor: gymTheme.colors.input,
-    borderRadius: gymTheme.borderRadius.medium,
-    paddingHorizontal: gymTheme.spacing.md,
-    paddingVertical: gymTheme.spacing.md,
+    backgroundColor: gymTheme.colors.surface,
+    borderRadius: gymTheme.borderRadius.md,
+    paddingHorizontal: gymTheme.spacing.base,
+    paddingVertical: gymTheme.spacing.sm,
     borderWidth: 1,
     borderColor: gymTheme.colors.border,
-    color: gymTheme.colors.text,
-    fontSize: 16,
+    color: gymTheme.colors.textPrimary,
+    ...gymTheme.typography.body1,
+    textAlign: 'left',
   },
   
   row: {
@@ -382,26 +445,28 @@ const styles = StyleSheet.create({
   },
   
   pickerWrapper: {
-    backgroundColor: gymTheme.colors.input,
-    borderRadius: gymTheme.borderRadius.medium,
+    backgroundColor: '#ffffff',
+    borderRadius: gymTheme.borderRadius.md,
     borderWidth: 1,
     borderColor: gymTheme.colors.border,
+    overflow: 'hidden',
   },
   
   picker: {
     color: '#000000',
     backgroundColor: '#ffffff',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
-    height: 40,
+    height: 50,
   },
   
   signUpButton: {
     backgroundColor: gymTheme.colors.accent,
-    borderRadius: gymTheme.borderRadius.medium,
-    paddingVertical: gymTheme.spacing.lg,
+    borderRadius: gymTheme.borderRadius.md,
+    paddingVertical: gymTheme.spacing.md,
     alignItems: 'center',
-    marginTop: gymTheme.spacing.xl,
+    justifyContent: 'center',
+    marginTop: gymTheme.spacing.lg,
     ...gymTheme.shadows.medium,
   },
   
@@ -411,18 +476,36 @@ const styles = StyleSheet.create({
   },
   
   signUpText: {
-    color: gymTheme.colors.text,
-    fontWeight: 'bold',
-    fontSize: 18,
+    ...gymTheme.typography.button,
+    fontSize: 16,
+    textAlign: 'center',
   },
   
   errorText: {
     color: gymTheme.colors.error,
     marginTop: gymTheme.spacing.lg,
     textAlign: 'center',
-    fontWeight: 'bold',
-    fontSize: 14,
+    ...gymTheme.typography.body2,
+  },
+  
+  footer: {
+    alignItems: 'center',
+    paddingVertical: gymTheme.spacing.lg,
+    paddingHorizontal: gymTheme.spacing.lg,
+    marginBottom: gymTheme.spacing.sm,
+  },
+  
+  footerText: {
+    ...gymTheme.typography.body1,
+    textAlign: 'center',
+    marginBottom: gymTheme.spacing.xs,
+  },
+  
+  footerSubtext: {
+    ...gymTheme.typography.body2,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
 
-export default SighUpScreen;
+export default SignUpScreen;

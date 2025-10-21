@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- THE FIT GYM 앱 아이콘 - 스쿼트 메인 버전 -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0e27;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#1a1f3a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0a0e27;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="accentGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00d4ff;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#06ffa5;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ff006e;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="textGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#00d4ff;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#ffffff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ff006e;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge> 
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- 배경 -->
+  <rect width="512" height="512" rx="80" fill="url(#bgGradient)"/>
+  
+  <!-- 중앙 원형 배경 -->
+  <circle cx="256" cy="256" r="200" fill="url(#accentGradient)" opacity="0.15"/>
+  <circle cx="256" cy="256" r="160" fill="url(#accentGradient)" opacity="0.1"/>
+  
+  <!-- 스쿼트 동작 아이콘 (메인) -->
+  <!-- 머리 -->
+  <circle cx="256" cy="140" r="24" fill="#00d4ff"/>
+  
+  <!-- 몸통 -->
+  <rect x="232" y="164" width="48" height="60" rx="24" fill="url(#accentGradient)"/>
+  
+  <!-- 다리 (스쿼트 자세) -->
+  <rect x="220" y="224" width="16" height="80" rx="8" fill="#ff006e"/>
+  <rect x="276" y="224" width="16" height="80" rx="8" fill="#ff006e"/>
+  
+  <!-- 발 -->
+  <rect x="208" y="304" width="24" height="12" rx="6" fill="#1a1f3a"/>
+  <rect x="280" y="304" width="24" height="12" rx="6" fill="#1a1f3a"/>
+  
+  <!-- 무게 (바벨) -->
+  <rect x="200" y="180" width="112" height="8" rx="4" fill="#ffffff"/>
+  <rect x="192" y="188" width="8" height="16" rx="4" fill="#ffb800"/>
+  <rect x="312" y="188" width="8" height="16" rx="4" fill="#ffb800"/>
+  <rect x="176" y="196" width="24" height="8" rx="4" fill="#ffb800"/>
+  <rect x="312" y="196" width="24" height="8" rx="4" fill="#ffb800"/>
+  
+  <!-- 추가 운동 요소들 -->
+  <circle cx="120" cy="200" r="8" fill="#00d4ff" opacity="0.8"/>
+  <circle cx="392" cy="200" r="8" fill="#ff006e" opacity="0.8"/>
+  <circle cx="120" cy="320" r="6" fill="#06ffa5" opacity="0.8"/>
+  <circle cx="392" cy="320" r="6" fill="#ffb800" opacity="0.8"/>
+  
+  <!-- THE FIT 텍스트 (더 크고 강조) -->
+  <text x="256" y="380" font-family="Arial, sans-serif" font-size="64" font-weight="900" text-anchor="middle" fill="url(#textGradient)" filter="url(#glow)">THE FIT</text>
+  
+  <!-- GYM 서브텍스트 (더 크고 강조) -->
+  <text x="256" y="420" font-family="Arial, sans-serif" font-size="32" font-weight="bold" text-anchor="middle" fill="#00d4ff" filter="url(#glow)">GYM</text>
+  
+  <!-- 추가 강조 요소 -->
+  <rect x="200" y="440" width="112" height="4" rx="2" fill="url(#accentGradient)"/>
+  <rect x="220" y="450" width="72" height="2" rx="1" fill="#ffffff" opacity="0.8"/>
+</svg>

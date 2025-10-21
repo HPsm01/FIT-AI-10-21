@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 목표 아이콘 -->
+  <circle cx="32" cy="32" r="24" stroke="#00d4ff" stroke-width="4" fill="none"/>
+  <circle cx="32" cy="32" r="16" stroke="#ff006e" stroke-width="3" fill="none"/>
+  <circle cx="32" cy="32" r="8" fill="#06ffa5"/>
+  <path d="M28 32L30 34L36 28" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

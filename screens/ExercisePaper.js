@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useContext } from "react";
 import { Camera } from 'expo-camera';
-import { AppState, Pressable, Text, View, StyleSheet, Alert, Platform, TouchableOpacity, ActivityIndicator } from "react-native";
+import { Pressable, Text, View, StyleSheet, Alert, Platform, TouchableOpacity, ActivityIndicator } from "react-native";
 import * as MediaLibrary from 'expo-media-library';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
@@ -31,7 +31,6 @@ export default function ExercisePaper() {
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const appState = useRef(AppState.currentState);
   const alreadyCheckedRef = useRef(false);
   const isFocused = useIsFocused();
   const [canStop, setCanStop] = useState(false);
@@ -140,13 +139,20 @@ export default function ExercisePaper() {
       setCanStop(false);
       console.log('녹화 성공:', video);
       const asset = await MediaLibrary.createAssetAsync(video.uri);
-      Alert.alert('녹화 완료', '갤러리에 저장되었습니다.');
+      console.log('갤러리에 저장되었습니다.');
       // S3 업로드
       setUploading(true);
       const key = await uploadVideoToS3(asset.uri);
       setUploading(false);
-      Alert.alert('업로드 완료', `S3 키: ${key}`);
-      navigation.navigate('MyExercise');
+      Alert.alert('녹화 및 업로드 완료', `영상이 갤러리에 저장되고 업로드되었습니다.\nS3 키: ${key}`, [
+        {
+          text: '확인',
+          onPress: () => {
+            // 업로드 완료 플래그와 함께 돌아가기
+            navigation.navigate('MyExercise', { videoUploaded: true, timestamp: Date.now() });
+          }
+        }
+      ]);
     } catch (err) {
       setIsRecording(false);
       setCanStop(false);
@@ -184,8 +190,15 @@ export default function ExercisePaper() {
           setUploading(true);
           const key = await uploadVideoToS3(uri);
           setUploading(false);
-          Alert.alert('업로드 완료', `S3 키: ${key}`);
-          navigation.navigate('MyExercise');
+          Alert.alert('업로드 완료', `S3 키: ${key}`, [
+            {
+              text: '확인',
+              onPress: () => {
+                // 업로드 완료 플래그와 함께 돌아가기
+                navigation.navigate('MyExercise', { videoUploaded: true, timestamp: Date.now() });
+              }
+            }
+          ]);
         } catch (err) {
           setUploading(false);
           console.error('업로드 오류:', err);

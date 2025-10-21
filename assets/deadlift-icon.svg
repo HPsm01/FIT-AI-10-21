@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 데드리프트 아이콘 -->
+  <rect x="28" y="8" width="8" height="20" rx="4" fill="#1a1f3a"/>
+  <rect x="24" y="28" width="16" height="4" rx="2" fill="#00d4ff"/>
+  <rect x="26" y="32" width="4" height="16" rx="2" fill="#ff006e"/>
+  <rect x="34" y="32" width="4" height="16" rx="2" fill="#ff006e"/>
+  <rect x="20" y="48" width="8" height="4" rx="2" fill="#1a1f3a"/>
+  <rect x="36" y="48" width="8" height="4" rx="2" fill="#1a1f3a"/>
+  <circle cx="32" cy="52" r="2" fill="#00d4ff"/>
+</svg>

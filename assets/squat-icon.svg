@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 스쿼트 아이콘 -->
+  <circle cx="32" cy="20" r="8" fill="#00d4ff"/>
+  <rect x="28" y="28" width="8" height="16" rx="4" fill="#1a1f3a"/>
+  <rect x="24" y="44" width="4" height="12" rx="2" fill="#ff006e"/>
+  <rect x="36" y="44" width="4" height="12" rx="2" fill="#ff006e"/>
+  <rect x="20" y="56" width="8" height="4" rx="2" fill="#1a1f3a"/>
+  <rect x="36" y="56" width="8" height="4" rx="2" fill="#1a1f3a"/>
+</svg>

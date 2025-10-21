@@ -5,6 +5,7 @@ import { createStackNavigator } from "@react-navigation/stack";
 import { gymTheme } from "./styles/theme";
 
 import LoginScreen from "./screens/LoginScreen"; 
+import WorkoutTypeScreen from "./screens/WorkoutTypeScreen";
 import CheckInScreen from "./screens/CheckInScreen";
 import CheckOutScreen from "./screens/CheckOutScreen";
 import ProfileScreen from "./screens/ProfileScreen";
@@ -14,6 +15,9 @@ import MyExerciseScreen from "./screens/MyExercise";
 import TotalExerciseScreen from "./screens/TotalExercise";
 import ServerDataScreen from "./screens/ServerDataScreen";
 import EditProfileScreen from "./screens/EditProfileScreen";
+import GoalSettingScreen from "./screens/GoalSettingScreen";
+import RoutineManagementScreen from "./screens/RoutineManagementScreen";
+import NotificationScreen from "./screens/NotificationScreen";
 
 const Stack = createStackNavigator();
 
@@ -23,32 +27,37 @@ const linking = {
   config: {
     screens: {
       Login: "login",
+      WorkoutType: "workouttype",
       SignUp: "signup",
       CheckIn: "checkin",
       CheckOut: "checkout",
       Profile: "profile",
       MyExercise: "myexercise",
       ExercisePaper: "exercisepaper",
-      TotalExercise: "totalexercise"
+      TotalExercise: "totalexercise",
+      GoalSetting: "goalsetting",
+      RoutineManagement: "routinemanagement",
+      Notification: "notification"
     }
   }
 };
 
-// 헬스장 테마 네비게이션 스타일
+// 프로페셔널 네비게이션 스타일
 const screenOptions = {
   headerStyle: {
     backgroundColor: gymTheme.colors.secondary,
-    elevation: 0,
-    shadowOpacity: 0,
+    elevation: 6,
+    shadowOpacity: 0.3,
+    borderBottomWidth: 1,
+    borderBottomColor: gymTheme.colors.border,
   },
   headerTintColor: gymTheme.colors.text,
   headerTitleStyle: {
-    fontWeight: 'bold',
-    fontSize: 18,
+    ...gymTheme.typography.h4,
   },
   headerTitleAlign: 'center',
   cardStyle: {
-    backgroundColor: gymTheme.colors.primary,
+    backgroundColor: gymTheme.colors.background,
   },
 };
 
@@ -71,6 +80,14 @@ function AppNavigator() {
           component={LoginScreen} 
           options={{ 
             title: "로그인",
+            headerShown: false 
+          }} 
+        />
+        <Stack.Screen 
+          name="WorkoutType" 
+          component={WorkoutTypeScreen} 
+          options={{ 
+            title: "운동 시작하기",
             headerShown: false 
           }} 
         />
@@ -120,7 +137,31 @@ function AppNavigator() {
         <Stack.Screen 
           name="EditProfile" 
           component={EditProfileScreen} 
-          options={{ title: "내 정보 수정" }} 
+          options={{ title: "내 정보 수정" }}
+        />
+        <Stack.Screen 
+          name="GoalSetting" 
+          component={GoalSettingScreen} 
+          options={{ 
+            title: "운동 목표 설정",
+            headerShown: false 
+          }}
+        />
+        <Stack.Screen 
+          name="RoutineManagement" 
+          component={RoutineManagementScreen} 
+          options={{ 
+            title: "운동 루틴 관리",
+            headerShown: false 
+          }}
+        />
+        <Stack.Screen 
+          name="Notification" 
+          component={NotificationScreen} 
+          options={{ 
+            title: "알림 설정",
+            headerShown: false 
+          }}
         />
       </Stack.Navigator>
     </NavigationContainer>

@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   StatusBar,
+  SafeAreaView,
 } from "react-native";
 import { UserContext } from "./UserContext";
 import PropTypes from 'prop-types';
@@ -17,11 +18,20 @@ import { BackHandler } from 'react-native';
 import React from 'react';
 import { gymTheme, gymStyles } from '../styles/theme';
 import CommonHeader from './CommonHeader';
+import { 
+  BenchPressIcon, 
+  SquatIcon, 
+  DeadliftIcon, 
+  GoalIcon, 
+  StatsIcon, 
+  SettingsIcon,
+  TheFitLogo 
+} from '../components/ImageComponents';
 
 const API_URL = "http://13.209.67.129:8000";
 
 const CheckOutScreen = ({ navigation }) => {
-  const { user, logoutUser } = useContext(UserContext);
+  const { user, logoutUser, updateWorkoutStatus } = useContext(UserContext);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -62,23 +72,13 @@ const CheckOutScreen = ({ navigation }) => {
             console.log('서버 상태로 로컬 상태 복구 완료');
             setLoading(false);
           } else {
-            // 서버에도 입실 기록이 없는 경우 - 입실 화면으로 이동
-            Alert.alert('알림', '입실 기록이 없습니다. 입실 화면으로 이동합니다.', [
-              {
-                text: '확인',
-                onPress: () => navigation.reset({ index: 0, routes: [{ name: 'CheckIn' }] }),
-              },
-            ]);
+            // 서버에도 입실 기록이 없는 경우 - 조용히 입실 화면으로 이동
+            navigation.reset({ index: 0, routes: [{ name: 'CheckIn' }] });
           }
         } catch (serverError) {
           console.error('서버 확인 중 오류:', serverError);
-          // 서버 확인 실패 시 입실 화면으로 이동
-          Alert.alert('알림', '입실 기록이 없습니다. 입실 화면으로 이동합니다.', [
-            {
-              text: '확인',
-              onPress: () => navigation.reset({ index: 0, routes: [{ name: 'CheckIn' }] }),
-            },
-          ]);
+          // 서버 확인 실패 시 조용히 입실 화면으로 이동
+          navigation.reset({ index: 0, routes: [{ name: 'CheckIn' }] });
         }
       }
     } catch (error) {
@@ -119,6 +119,9 @@ const CheckOutScreen = ({ navigation }) => {
       console.log("✅ CheckOut data:", data);
 
       await AsyncStorage.removeItem('checkInTime');
+
+      // UserContext 운동 상태 즉시 업데이트
+      await updateWorkoutStatus();
 
       const inTime = new Date(data.check_in);
       const outTime = new Date(data.check_out);
@@ -177,19 +180,19 @@ const CheckOutScreen = ({ navigation }) => {
 
   if (loading) {
     return (
-      <View style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor={gymTheme.colors.primary} />
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={gymTheme.colors.background} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={gymTheme.colors.accent} />
           <Text style={styles.loadingText}>퇴실 상태 확인 중...</Text>
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={gymTheme.colors.primary} />
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={gymTheme.colors.background} />
       
       {/* 공통 헤더 */}
       <CommonHeader 
@@ -199,53 +202,66 @@ const CheckOutScreen = ({ navigation }) => {
 
       {/* 메인 콘텐츠 */}
       <View style={styles.content}>
-        {/* 완료 메시지 */}
-        <View style={styles.completionCard}>
-          <Text style={styles.completionIcon}>🏋️</Text>
-          <Text style={styles.completionTitle}>오늘의 운동 완료!</Text>
-          <Text style={styles.completionText}>
-            {user?.name}님, 수고하셨습니다! 💪
-          </Text>
+        {/* 사용자 정보 카드 */}
+        <View style={styles.userInfoCard}>
+          <View style={styles.userHeader}>
+            <View style={styles.userIconContainer}>
+              <Text style={styles.userIcon}>✓</Text>
+            </View>
+            <View style={styles.userDetails}>
+              <Text style={styles.userName}>{user?.name}</Text>
+              <Text style={styles.userStatus}>운동 완료</Text>
+            </View>
+          </View>
         </View>
 
         {/* 퇴실 버튼 */}
         <TouchableOpacity style={styles.checkOutButton} onPress={handleCheckOut}>
           <View style={styles.checkOutContent}>
-            <Text style={styles.checkOutIcon}>🚪</Text>
-            <Text style={styles.checkOutText}>퇴실하기</Text>
-            <Text style={styles.checkOutSubtext}>운동을 마칩니다</Text>
+            <View style={styles.checkOutIconContainer}>
+              <Text style={styles.checkOutIcon}>■</Text>
+            </View>
+            <View style={styles.checkOutTextContainer}>
+              <Text style={styles.checkOutText}>운동 종료</Text>
+              <Text style={styles.checkOutSubtext}>FINISH WORKOUT</Text>
+            </View>
           </View>
         </TouchableOpacity>
 
-        {/* 오늘의 운동 버튼 */}
-        <TouchableOpacity 
-          style={styles.exerciseButton} 
-          onPress={() => navigation.navigate("MyExercise")}
-        >
-          <View style={styles.exerciseContent}>
-            <Text style={styles.exerciseIcon}>🏋️</Text>
-            <Text style={styles.exerciseText}>오늘의 운동</Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* 프로필 버튼 */}
-        <TouchableOpacity 
-          style={styles.profileButton} 
-          onPress={() => navigation.navigate("Profile")}
-        >
-          <View style={styles.profileContent}>
-            <Text style={styles.profileIcon}>👤</Text>
-            <Text style={styles.profileText}>내 정보 보기</Text>
-          </View>
-        </TouchableOpacity>
+        {/* 빠른 액션 버튼들 */}
+        <View style={styles.quickActions}>
+          <TouchableOpacity 
+            style={styles.actionButton} 
+            onPress={() => navigation.navigate("MyExercise")}
+          >
+            <Text style={styles.actionIcon}>📝</Text>
+            <Text style={styles.actionText}>운동 기록</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.actionButton} 
+            onPress={() => navigation.navigate("TotalExercise")}
+          >
+            <Text style={styles.actionIcon}>📊</Text>
+            <Text style={styles.actionText}>통계</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.actionButton} 
+            onPress={() => navigation.navigate("GoalSetting")}
+          >
+            <Text style={styles.actionIcon}>🎯</Text>
+            <Text style={styles.actionText}>목표 설정</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* 하단 정보 */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>오늘도 수고하셨습니다!</Text>
-          <Text style={styles.footerSubtext}>내일도 힘내세요 💪</Text>
+          <Text style={styles.footerText}>AI 기반 자세 분석</Text>
+          <Text style={styles.footerSubtext}>실시간 피드백으로 완벽한 운동 자세를</Text>
         </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -256,7 +272,7 @@ CheckOutScreen.propTypes = {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: gymTheme.colors.primary,
+    backgroundColor: gymTheme.colors.background,
   },
   
   loadingContainer: {
@@ -266,144 +282,151 @@ const styles = StyleSheet.create({
   },
   
   loadingText: {
-    marginTop: gymTheme.spacing.md,
-    fontSize: 16,
-    color: gymTheme.colors.textSecondary,
+    ...gymTheme.typography.body1,
+    marginTop: gymTheme.spacing.base,
   },
-  
-
   
   content: {
     flex: 1,
-    padding: gymTheme.spacing.lg,
+    padding: gymTheme.spacing.base,
     justifyContent: 'center',
   },
   
-  completionCard: {
-    backgroundColor: gymTheme.colors.card,
-    borderRadius: gymTheme.borderRadius.large,
-    padding: gymTheme.spacing.xl,
-    alignItems: 'center',
+  userInfoCard: {
+    backgroundColor: gymTheme.colors.cardElevated,
+    borderRadius: gymTheme.borderRadius.lg,
+    padding: gymTheme.spacing.lg,
     marginBottom: gymTheme.spacing.xl,
-    ...gymTheme.shadows.large,
+    borderWidth: 1,
+    borderColor: gymTheme.colors.borderLight,
+    ...gymTheme.shadows.medium,
   },
   
-  completionIcon: {
-    fontSize: 48,
-    marginBottom: gymTheme.spacing.md,
+  userHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   
-  completionTitle: {
-    fontSize: 24,
+  userIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: gymTheme.colors.success + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: gymTheme.spacing.base,
+  },
+  
+  userIcon: {
+    fontSize: 32,
+    color: gymTheme.colors.success,
     fontWeight: 'bold',
-    color: gymTheme.colors.text,
-    marginBottom: gymTheme.spacing.sm,
-    textAlign: 'center',
   },
   
-  completionText: {
-    fontSize: 16,
-    color: gymTheme.colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
+  userDetails: {
+    flex: 1,
+  },
+  
+  userName: {
+    ...gymTheme.typography.h3,
+    marginBottom: gymTheme.spacing.xxs,
+  },
+  
+  userStatus: {
+    ...gymTheme.typography.body2,
+    color: gymTheme.colors.success,
+    fontWeight: '600',
   },
   
   checkOutButton: {
     backgroundColor: gymTheme.colors.error,
-    borderRadius: gymTheme.borderRadius.large,
-    padding: gymTheme.spacing.xl,
-    marginBottom: gymTheme.spacing.lg,
+    borderRadius: gymTheme.borderRadius.lg,
+    padding: gymTheme.spacing.lg,
+    marginBottom: gymTheme.spacing.base,
     ...gymTheme.shadows.medium,
   },
   
   checkOutContent: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  
+  checkOutIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: gymTheme.spacing.base,
   },
   
   checkOutIcon: {
-    fontSize: 32,
-    marginBottom: gymTheme.spacing.sm,
+    fontSize: 20,
+    color: gymTheme.colors.text,
+    fontWeight: 'bold',
+  },
+  
+  checkOutTextContainer: {
+    alignItems: 'flex-start',
   },
   
   checkOutText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: gymTheme.colors.text,
-    marginBottom: 4,
+    ...gymTheme.typography.h3,
+    marginBottom: gymTheme.spacing.xxs,
   },
   
   checkOutSubtext: {
-    fontSize: 14,
-    color: gymTheme.colors.textSecondary,
-  },
-  
-  exerciseButton: {
-    backgroundColor: gymTheme.colors.accent,
-    borderRadius: gymTheme.borderRadius.large,
-    padding: gymTheme.spacing.lg,
-    marginBottom: gymTheme.spacing.md,
-    ...gymTheme.shadows.medium,
-  },
-  
-  exerciseContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  
-  exerciseIcon: {
-    fontSize: 24,
-    marginRight: gymTheme.spacing.sm,
-  },
-  
-  exerciseText: {
-    fontSize: 18,
-    fontWeight: '600',
+    ...gymTheme.typography.caption,
     color: gymTheme.colors.text,
+    opacity: 0.8,
+    letterSpacing: 1,
+    fontWeight: '600',
   },
-
-  profileButton: {
+  
+  quickActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: gymTheme.spacing.base,
+    gap: gymTheme.spacing.sm,
+  },
+  
+  actionButton: {
+    flex: 1,
     backgroundColor: gymTheme.colors.card,
-    borderRadius: gymTheme.borderRadius.large,
-    padding: gymTheme.spacing.lg,
-    marginBottom: gymTheme.spacing.xl,
+    borderRadius: gymTheme.borderRadius.md,
+    padding: gymTheme.spacing.base,
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: gymTheme.colors.border,
-    ...gymTheme.shadows.medium,
+    ...gymTheme.shadows.small,
   },
   
-  profileContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  
-  profileIcon: {
+  actionIcon: {
     fontSize: 24,
-    marginRight: gymTheme.spacing.sm,
+    marginBottom: gymTheme.spacing.xs,
   },
   
-  profileText: {
-    fontSize: 18,
+  actionText: {
+    ...gymTheme.typography.caption,
     fontWeight: '600',
-    color: gymTheme.colors.text,
   },
   
   footer: {
     alignItems: 'center',
-    paddingVertical: gymTheme.spacing.lg,
+    paddingVertical: gymTheme.spacing.xl,
   },
   
   footerText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: gymTheme.colors.text,
-    marginBottom: 4,
+    ...gymTheme.typography.subtitle1,
+    textAlign: 'center',
+    marginBottom: gymTheme.spacing.xs,
   },
   
   footerSubtext: {
-    fontSize: 14,
-    color: gymTheme.colors.textSecondary,
+    ...gymTheme.typography.body2,
+    textAlign: 'center',
   },
 });
 

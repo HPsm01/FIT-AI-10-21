@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState, useLayoutEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, BackHandler } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, BackHandler, Alert, SafeAreaView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { UserContext } from "./UserContext";
 import PropTypes from 'prop-types';
@@ -36,6 +36,7 @@ export default function ProfileScreen({ navigation }) {
           // 무시 또는 필요시 에러 처리
         }
       };
+      
       fetchUser();
     }, [user?.id])
   );
@@ -70,8 +71,8 @@ export default function ProfileScreen({ navigation }) {
 
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={gymTheme.colors.primary} />
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={gymTheme.colors.background} />
       
       {/* 공통 헤더 */}
       <CommonHeader 
@@ -80,6 +81,25 @@ export default function ProfileScreen({ navigation }) {
       />
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
+        {/* 통계 개요 카드 */}
+        <View style={styles.statsOverview}>
+          <View style={styles.statBox}>
+            <Text style={styles.statIcon}>🔥</Text>
+            <Text style={styles.statValue}>12</Text>
+            <Text style={styles.statLabel}>이번 주</Text>
+          </View>
+          <View style={[styles.statBox, styles.statBoxAccent]}>
+            <Text style={styles.statIcon}>⚡</Text>
+            <Text style={styles.statValue}>48</Text>
+            <Text style={styles.statLabel}>총 운동일</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statIcon}>🏆</Text>
+            <Text style={styles.statValue}>87%</Text>
+            <Text style={styles.statLabel}>목표 달성</Text>
+          </View>
+        </View>
+
         {/* 사용자 정보 카드 */}
         <View style={styles.profileCard}>
           <View style={styles.profileHeader}>
@@ -110,53 +130,61 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </View>
 
-        {/* 액션 버튼들 */}
-        <View style={styles.actionSection}>
+        {/* 빠른 액션 그리드 */}
+        <View style={styles.quickActionsGrid}>
           <TouchableOpacity
-            style={styles.actionCard}
-            onPress={async () => {
-              try {
-                const localCheckInTime = await AsyncStorage.getItem('checkInTime');
-                if (localCheckInTime) {
-                  navigation.navigate('TotalExercise');
-                } else {
-                  Alert.alert('알림', '입실 후 운동 기록을 확인할 수 있습니다.', [
-                    {
-                      text: '확인',
-                      onPress: () => navigation.navigate('CheckIn'),
-                    },
-                  ]);
-                }
-              } catch (error) {
-                console.error('입실 상태 확인 중 오류:', error);
-                navigation.navigate('CheckIn');
-              }
-            }}
+            style={styles.quickActionCard}
+            onPress={() => navigation.navigate('GoalSetting')}
           >
-            <View style={styles.actionContent}>
-              <Text style={styles.actionIcon}>📊</Text>
-              <Text style={styles.actionTitle}>전체 운동 기록</Text>
-              <Text style={styles.actionSubtitle}>모든 운동 데이터 확인</Text>
-            </View>
+            <Text style={styles.quickActionIcon}>🎯</Text>
+            <Text style={styles.quickActionTitle}>목표 설정</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.actionCard}
+            style={styles.quickActionCard}
+            onPress={() => navigation.navigate('RoutineManagement')}
+          >
+            <Text style={styles.quickActionIcon}>📅</Text>
+            <Text style={styles.quickActionTitle}>루틴 관리</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            onPress={() => navigation.navigate('Notification')}
+          >
+            <Text style={styles.quickActionIcon}>🔔</Text>
+            <Text style={styles.quickActionTitle}>알림 설정</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickActionCard}
             onPress={() => navigation.navigate('EditProfile')}
           >
-            <View style={styles.actionContent}>
-              <Text style={styles.actionIcon}>✏️</Text>
-              <Text style={styles.actionTitle}>내 정보 수정</Text>
-              <Text style={styles.actionSubtitle}>프로필 정보 변경</Text>
-            </View>
+            <Text style={styles.quickActionIcon}>✏️</Text>
+            <Text style={styles.quickActionTitle}>정보 수정</Text>
           </TouchableOpacity>
+        </View>
 
-
+        {/* 주요 기능 카드 */}
+        <View style={styles.featureSection}>
+          <TouchableOpacity
+            style={styles.featureCard}
+            onPress={() => navigation.navigate('TotalExercise')}
+          >
+            <View style={styles.featureIconContainer}>
+              <Text style={styles.featureIcon}>📊</Text>
+            </View>
+            <View style={styles.featureContent}>
+              <Text style={styles.featureTitle}>전체 운동 기록</Text>
+              <Text style={styles.featureSubtitle}>모든 운동 데이터와 통계를 확인하세요</Text>
+            </View>
+            <Text style={styles.featureArrow}>›</Text>
+          </TouchableOpacity>
         </View>
 
 
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -167,27 +195,7 @@ ProfileScreen.propTypes = {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: gymTheme.colors.primary,
-  },
-  
-  header: {
-    backgroundColor: gymTheme.colors.secondary,
-    paddingTop: 50,
-    paddingBottom: 30,
-    paddingHorizontal: gymTheme.spacing.lg,
-    alignItems: 'center',
-  },
-  
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: gymTheme.colors.text,
-    marginBottom: 8,
-  },
-  
-  headerSubtitle: {
-    fontSize: 16,
-    color: gymTheme.colors.textSecondary,
+    backgroundColor: gymTheme.colors.background,
   },
   
   scrollView: {
@@ -195,98 +203,195 @@ const styles = StyleSheet.create({
   },
   
   content: {
-    padding: gymTheme.spacing.lg,
+    padding: gymTheme.spacing.base,
+    paddingBottom: gymTheme.spacing.base,
   },
   
-  profileCard: {
+  // 통계 개요
+  statsOverview: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: gymTheme.spacing.base,
+    gap: gymTheme.spacing.sm,
+  },
+  
+  statBox: {
+    flex: 1,
     backgroundColor: gymTheme.colors.card,
-    borderRadius: gymTheme.borderRadius.large,
-    padding: gymTheme.spacing.lg,
-    marginBottom: gymTheme.spacing.xl,
+    borderRadius: gymTheme.borderRadius.md,
+    padding: gymTheme.spacing.sm,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: gymTheme.colors.border,
+    ...gymTheme.shadows.small,
+  },
+  
+  statBoxAccent: {
+    backgroundColor: gymTheme.colors.cardElevated,
+    borderColor: gymTheme.colors.accent,
+    borderWidth: 2,
+    ...gymTheme.shadows.medium,
+  },
+  
+  statIcon: {
+    fontSize: 24,
+    marginBottom: gymTheme.spacing.xxs,
+  },
+  
+  statValue: {
+    ...gymTheme.typography.h4,
+    marginBottom: gymTheme.spacing.xxs,
+  },
+  
+  statLabel: {
+    ...gymTheme.typography.caption,
+    textAlign: 'center',
+  },
+  
+  // 프로필 카드 - 더 전문적인 디자인
+  profileCard: {
+    backgroundColor: gymTheme.colors.cardElevated,
+    borderRadius: gymTheme.borderRadius.lg,
+    padding: gymTheme.spacing.base,
+    marginBottom: gymTheme.spacing.base,
+    borderWidth: 1,
+    borderColor: gymTheme.colors.borderLight,
     ...gymTheme.shadows.medium,
   },
   
   profileHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: gymTheme.spacing.lg,
+    marginBottom: gymTheme.spacing.md,
+    paddingBottom: gymTheme.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: gymTheme.colors.divider,
   },
   
   profileIcon: {
-    fontSize: 32,
-    marginRight: gymTheme.spacing.md,
+    fontSize: 36,
+    marginRight: gymTheme.spacing.sm,
   },
   
   profileName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: gymTheme.colors.text,
+    ...gymTheme.typography.h2,
+    flex: 1,
   },
   
   infoGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+    gap: gymTheme.spacing.md,
   },
   
   infoItem: {
     width: '48%',
-    marginBottom: gymTheme.spacing.md,
+    backgroundColor: gymTheme.colors.surface,
+    padding: gymTheme.spacing.sm,
+    borderRadius: gymTheme.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: gymTheme.colors.border,
+    marginBottom: gymTheme.spacing.sm,
   },
   
   infoLabel: {
-    fontSize: 14,
-    color: gymTheme.colors.textSecondary,
-    marginBottom: 4,
+    ...gymTheme.typography.caption,
+    marginBottom: gymTheme.spacing.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   
   infoValue: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: gymTheme.colors.text,
+    ...gymTheme.typography.subtitle1,
   },
   
-  actionSection: {
-    marginBottom: gymTheme.spacing.xl,
+  // 빠른 액션 그리드
+  quickActionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: gymTheme.spacing.base,
+    gap: gymTheme.spacing.xs,
   },
   
-  actionCard: {
+  quickActionCard: {
+    width: '48%',
     backgroundColor: gymTheme.colors.card,
-    borderRadius: gymTheme.borderRadius.large,
-    padding: gymTheme.spacing.lg,
-    marginBottom: gymTheme.spacing.md,
+    borderRadius: gymTheme.borderRadius.md,
+    padding: gymTheme.spacing.sm,
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: gymTheme.colors.border,
+    ...gymTheme.shadows.small,
+    marginBottom: gymTheme.spacing.sm,
+  },
+  
+  quickActionIcon: {
+    fontSize: 32,
+    marginBottom: gymTheme.spacing.xs,
+  },
+  
+  quickActionTitle: {
+    ...gymTheme.typography.subtitle2,
+    textAlign: 'center',
+  },
+  
+  // 주요 기능 섹션
+  featureSection: {
+    marginBottom: gymTheme.spacing.base,
+  },
+  
+  featureCard: {
+    backgroundColor: gymTheme.colors.cardElevated,
+    borderRadius: gymTheme.borderRadius.md,
+    padding: gymTheme.spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: gymTheme.colors.borderLight,
     ...gymTheme.shadows.medium,
   },
   
-  actionContent: {
-    flexDirection: 'row',
+  featureIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: gymTheme.borderRadius.sm,
+    backgroundColor: gymTheme.colors.accent,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: gymTheme.spacing.sm,
+    ...gymTheme.shadows.small,
   },
   
-  actionIcon: {
+  featureIcon: {
     fontSize: 24,
-    marginRight: gymTheme.spacing.md,
   },
   
-  actionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: gymTheme.colors.text,
-    marginBottom: 2,
+  featureContent: {
+    flex: 1,
   },
   
-  actionSubtitle: {
-    fontSize: 14,
-    color: gymTheme.colors.textSecondary,
+  featureTitle: {
+    ...gymTheme.typography.h5,
+    marginBottom: gymTheme.spacing.xxs,
+  },
+  
+  featureSubtitle: {
+    ...gymTheme.typography.caption,
+  },
+  
+  featureArrow: {
+    ...gymTheme.typography.display,
+    color: gymTheme.colors.textMuted,
+    marginLeft: gymTheme.spacing.sm,
   },
   
   checkoutButton: {
     backgroundColor: gymTheme.colors.error,
-    borderRadius: gymTheme.borderRadius.large,
-    padding: gymTheme.spacing.lg,
-    ...gymTheme.shadows.medium,
+    borderRadius: gymTheme.borderRadius.lg,
+    padding: gymTheme.spacing.base,
+    ...gymTheme.shadows.glowAccent,
   },
   
   checkoutContent: {
@@ -301,9 +406,7 @@ const styles = StyleSheet.create({
   },
   
   checkoutText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: gymTheme.colors.text,
+    ...gymTheme.typography.button,
   },
 
 });

@@ -29,13 +29,21 @@ export const UserProvider = ({ children }) => {
     const checkWorkoutStatus = async () => {
       try {
         const checkInTime = await AsyncStorage.getItem('checkInTime');
+        console.log('🔍 UserContext: checkInTime 확인:', checkInTime);
+        
         if (checkInTime) {
-          setIsWorkingOut(true);
-          console.log('운동 중 - 타이머 시작');
+          // 입실 기록이 있으면 운동 중으로 설정 (상태가 변경될 때만 로그)
+          if (!isWorkingOut) {
+            setIsWorkingOut(true);
+            console.log('✅ UserContext: 운동 중 상태로 설정됨');
+          }
         } else {
-          setIsWorkingOut(false);
-          setElapsed('00:00:00');
-          console.log('운동 중 아님 - 타이머 정지');
+          // 입실 기록이 없으면 운동 중 아님으로 설정 (상태가 변경될 때만 로그)
+          if (isWorkingOut) {
+            setIsWorkingOut(false);
+            setElapsed('00:00:00');
+            console.log('❌ UserContext: 운동 중 아님 상태로 설정됨');
+          }
         }
       } catch (error) {
         console.error('운동 상태 확인 실패:', error);
@@ -43,7 +51,14 @@ export const UserProvider = ({ children }) => {
     };
 
     checkWorkoutStatus();
-  }, [user]);
+    
+    // 주기적으로 운동 상태 확인 (10초마다로 변경하여 부하 감소)
+    const statusCheckInterval = setInterval(checkWorkoutStatus, 10000);
+    
+    return () => {
+      clearInterval(statusCheckInterval);
+    };
+  }, [user, isWorkingOut]);
 
   useEffect(() => {
     if (!isWorkingOut) {
@@ -102,8 +117,8 @@ export const UserProvider = ({ children }) => {
           setInitialRoute('CheckOut'); // 이미 입실 중이면 퇴실 화면으로
           console.log('저장된 로그인 정보 + 입실 상태 확인 - 퇴실 화면으로 이동');
         } else {
-          setInitialRoute('CheckIn'); // 로그인되어 있지만 입실하지 않음 - 입실 화면으로
-          console.log('저장된 로그인 정보 확인 - 입실 화면으로 이동');
+          setInitialRoute('WorkoutType'); // 로그인되어 있지만 입실하지 않음 - 운동 타입 선택 화면으로
+          console.log('저장된 로그인 정보 확인 - 운동 타입 선택 화면으로 이동');
         }
       } else {
         setInitialRoute('Login'); // 로그인되지 않음 - 로그인 화면으로
@@ -151,6 +166,35 @@ export const UserProvider = ({ children }) => {
     console.log('로그아웃 완료 - 로그인 화면으로 이동');
   };
 
+  // 운동 상태 즉시 업데이트 함수
+  const updateWorkoutStatus = async () => {
+    try {
+      console.log('🔄 UserContext: updateWorkoutStatus 호출됨');
+      const checkInTime = await AsyncStorage.getItem('checkInTime');
+      console.log('🔄 UserContext: AsyncStorage에서 checkInTime 조회:', checkInTime);
+      console.log('🔄 UserContext: 현재 isWorkingOut 상태:', isWorkingOut);
+      
+      if (checkInTime) {
+        if (!isWorkingOut) {
+          setIsWorkingOut(true);
+          console.log('✅ UserContext: 운동 중 상태로 즉시 업데이트됨');
+        } else {
+          console.log('ℹ️ UserContext: 이미 운동 중 상태임');
+        }
+      } else {
+        if (isWorkingOut) {
+          setIsWorkingOut(false);
+          setElapsed('00:00:00');
+          console.log('❌ UserContext: 운동 중 아님 상태로 즉시 업데이트됨');
+        } else {
+          console.log('ℹ️ UserContext: 이미 운동 중 아님 상태임');
+        }
+      }
+    } catch (error) {
+      console.error('운동 상태 즉시 업데이트 실패:', error);
+    }
+  };
+
   // 앱 상태 변경 감지 및 퇴실 처리
   useEffect(() => {
     if (!user) return;
@@ -184,48 +228,31 @@ export const UserProvider = ({ children }) => {
           clearTimeout(backgroundTimer);
           backgroundTimer = null;
         }
+        
+        // 앱이 활성화될 때 운동 상태 다시 확인
+        try {
+          const checkInTime = await AsyncStorage.getItem('checkInTime');
+          if (checkInTime) {
+            setIsWorkingOut(true);
+            console.log('앱 활성화 - 운동 상태 복구됨');
+          } else {
+            setIsWorkingOut(false);
+            setElapsed('00:00:00');
+            console.log('앱 활성화 - 운동 상태 없음');
+          }
+        } catch (error) {
+          console.error('앱 활성화 시 운동 상태 확인 실패:', error);
+        }
       } else if (nextAppState === 'background' || nextAppState === 'inactive') {
         // 앱이 백그라운드로 가거나 비활성화될 때
         if (!isExiting.current) {
           isExiting.current = true;
-          console.log('앱 백그라운드/비활성화 - 5분 후 자동 퇴실 예약');
+          console.log('앱 백그라운드/비활성화 - 자동 퇴실 비활성화됨');
           
-          // 5분 후 자동 퇴실 처리 (즉시 퇴실하지 않음)
-          backgroundTimer = setTimeout(async () => {
-            try {
-              // 입실 상태 확인
-              const checkInTime = await AsyncStorage.getItem('checkInTime');
-              if (checkInTime) {
-                console.log('5분 경과 - 자동 퇴실 처리');
-                
-                // 퇴실 API 호출
-                const payload = {
-                  user_id: user.id,
-                  check_out: new Date().toISOString(),
-                };
-                
-                const response = await fetch('http://13.209.67.129:8000/visits/checkout', {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(payload),
-                });
-                
-                if (response.ok) {
-                  // 퇴실 성공 시 checkInTime 제거
-                  await AsyncStorage.removeItem('checkInTime');
-                  console.log('자동 퇴실 처리 완료');
-                  // 퇴실 후 로그인 화면으로 이동
-                  setInitialRoute('Login');
-                } else {
-                  console.log('자동 퇴실 API 호출 실패');
-                }
-              } else {
-                console.log('입실하지 않은 상태 - 퇴실 처리 불필요');
-              }
-            } catch (error) {
-              console.error('자동 퇴실 처리 중 오류:', error);
-            }
-          }, 5 * 60 * 1000); // 5분 후
+          // 자동 퇴실 로직 비활성화 (사용자가 수동으로 퇴실하도록 함)
+          // backgroundTimer = setTimeout(async () => {
+          //   // 자동 퇴실 로직 제거됨
+          // }, 30 * 60 * 1000);
         }
       }
     };
@@ -267,7 +294,8 @@ export const UserProvider = ({ children }) => {
       isLoading,
       initialRoute,
       elapsed,
-      isWorkingOut
+      isWorkingOut,
+      updateWorkoutStatus
     }}>
       {children}
     </UserContext.Provider>
